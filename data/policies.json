@@ -1,0 +1,22 @@
+[
+  {
+    "id": "POL-001",
+    "title": "Unusual login and unfamiliar IP response",
+    "text": "When an employee account successfully logs in from an unfamiliar IP after several failed login attempts, analysts must investigate supporting event logs. For a sensitive account, recommend simulated session revocation after human approval. Do not assert compromise without enough evidence."
+  },
+  {
+    "id": "POL-002",
+    "title": "Privileged Finance account protection",
+    "text": "Finance admin accounts are sensitive because of potential access to financial workflows. Analysts should prioritize unfamiliar login IP alerts for Finance accounts, review access logs and consider a password reset recommendation after approval. Business harm is potential unless verified."
+  },
+  {
+    "id": "POL-003",
+    "title": "Approval and incident audit",
+    "text": "A containment recommendation must not execute before authorized human approval. Any simulated decision must record the incident identifier, analyst identity, decision, timestamp and outcome."
+  },
+  {
+    "id": "POL-004",
+    "title": "Evidence handling standard",
+    "text": "Investigation summaries must distinguish observed login events from hypotheses. Cite event identifiers for evidence and policy identifiers for guidance. Missing evidence must be stated clearly."
+  }
+]

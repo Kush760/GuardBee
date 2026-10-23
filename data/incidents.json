@@ -1,0 +1,39 @@
+[
+  {
+    "id": "INC-1001",
+    "title": "Suspicious login after repeated failures",
+    "account": "finance-admin@example.test",
+    "department": "Finance",
+    "known_ips": ["203.0.113.10"],
+    "events": [
+      {"id": "EVT-001", "time_utc": "2026-10-17T08:00:00Z", "type": "login_success", "ip": "203.0.113.10", "country": "India"},
+      {"id": "EVT-002", "time_utc": "2026-10-18T07:00:00Z", "type": "login_failed", "ip": "198.51.100.42", "country": "Unknown"},
+      {"id": "EVT-003", "time_utc": "2026-10-18T07:01:00Z", "type": "login_failed", "ip": "198.51.100.42", "country": "Unknown"},
+      {"id": "EVT-004", "time_utc": "2026-10-18T07:02:00Z", "type": "login_failed", "ip": "198.51.100.42", "country": "Unknown"},
+      {"id": "EVT-005", "time_utc": "2026-10-18T07:03:00Z", "type": "login_failed", "ip": "198.51.100.42", "country": "Unknown"},
+      {"id": "EVT-006", "time_utc": "2026-10-18T07:04:00Z", "type": "login_success", "ip": "198.51.100.42", "country": "Unknown"}
+    ]
+  },
+  {
+    "id": "INC-1002",
+    "title": "Unfamiliar login requires review",
+    "account": "operations-lead@example.test",
+    "department": "Operations",
+    "known_ips": ["203.0.113.44"],
+    "events": [
+      {"id": "EVT-101", "time_utc": "2026-10-18T10:12:00Z", "type": "login_success", "ip": "203.0.113.44", "country": "India"},
+      {"id": "EVT-102", "time_utc": "2026-10-19T01:20:00Z", "type": "login_success", "ip": "198.51.100.77", "country": "Unknown"}
+    ]
+  },
+  {
+    "id": "INC-1003",
+    "title": "Known-location login with one failed attempt",
+    "account": "support-agent@example.test",
+    "department": "Support",
+    "known_ips": ["203.0.113.88"],
+    "events": [
+      {"id": "EVT-201", "time_utc": "2026-10-19T08:00:00Z", "type": "login_failed", "ip": "203.0.113.88", "country": "India"},
+      {"id": "EVT-202", "time_utc": "2026-10-19T08:02:00Z", "type": "login_success", "ip": "203.0.113.88", "country": "India"}
+    ]
+  }
+]

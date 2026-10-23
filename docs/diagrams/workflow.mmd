@@ -1,0 +1,12 @@
+flowchart TD
+  A[Select validated synthetic incident] --> B[Show timeline and deterministic risk]
+  B --> C[Retrieve policies with TF-IDF threshold]
+  C --> D{Policy match?}
+  D -- No --> E[Show no-match; AI and approval locked]
+  D -- Yes --> F[Analyst requests AI analysis]
+  F --> G{Usable current-ID-cited report?}
+  G -- No --> H[Show safe error; approval locked]
+  G -- Yes --> I[Show report and enable one decision]
+  I --> J{Approve or reject?}
+  J --> K[Record simulated session audit]
+  K --> L[Lock decision controls for report]
