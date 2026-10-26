@@ -18,7 +18,7 @@ flowchart LR
 
 ## Module responsibilities
 
-- `app.py`: renders the Dashboard, Security Incidents (with incident detail), and Audit History views, reads safe configuration, handles invalid-data UI state, coordinates analysis (with an explicit retry after AI failure), and shows the session audit. Every dynamic value is HTML-escaped before it is placed in raw-HTML markup. The UI does not derive activity classes from severity; it displays `analysis["classification"]` (`suspicious`, `insufficient_evidence`, or `normal`) and `analysis["priority"]` only when `engine.py` provides them, which it does not yet.
+- `app.py`: a native-Streamlit UI with three pages (Dashboard, Security Incidents, Audit History) selected in the sidebar. It reads safe configuration, handles the fail-closed data-load error state, coordinates AI analysis (with an explicit retry after failure), gates simulated decisions through `workflow.py`, and shows the session audit. It renders no raw HTML: data text appears in tables and metrics or is Markdown-escaped. The UI never derives an activity class from score or severity. It displays `analysis["classification"]` (`SUSPICIOUS`, `INSUFFICIENT_EVIDENCE`, `NORMAL`, with the specification's wording), `analysis["investigation_priority"]`, and a `None` severity as "Not assigned" only when `engine.py` provides them, which it does not yet.
 - `data_loader.py`: parses and validates JSON before it reaches the application.
 - `engine.py`: creates explainable score, severity, flags, evidence IDs, and suggested action from selected events.
 - `retrieval.py`: ranks policies with TF-IDF cosine similarity, returns at most `DEFAULT_TOP_K = 3` passages, and excludes scores below `DEFAULT_MIN_SIMILARITY = 0.08` by default. It never pads results with weaker matches. Ties keep corpus order. Invalid arguments or malformed policy entries raise `TypeError`/`ValueError`. Queries and corpora with no usable terms return no matches.
@@ -27,6 +27,6 @@ flowchart LR
 
 ## State model
 
-Streamlit session state keeps `report`, `report_status`, `report_context_id`, `active_report_id`, `report_sequence`, `decision`, and `audit`. Changing an incident or requesting another analysis clears the active report/decision state. Historical audit entries remain only in the current session.
+Streamlit session state keeps `report`, `report_status`, `report_context_id`, `active_report_id`, `report_sequence`, `decision`, and `audit`, plus the UI keys `page`, `current_incident_id`, and `active_incident_id`. Changing an incident or requesting another analysis clears the active report/decision state. Historical audit entries remain only in the current session.
 
 See [architecture diagram](diagrams/architecture.mmd) and [data flow diagram](diagrams/data_flow.mmd).

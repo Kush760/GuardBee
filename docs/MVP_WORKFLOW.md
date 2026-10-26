@@ -18,6 +18,6 @@ When there is a policy match and the analyst clicks Analyze, GuardBee sends curr
 
 ## 5. Response and Audit
 
-One validated report can receive either Approve simulated response or Reject recommendation. The app records a session-only audit event and disables both controls for that report. A new AI analysis creates a new report ID; selecting a different incident invalidates the active report.
+One validated report can receive either Approve (simulated) or Reject (simulated). The app records a session-only audit event and disables both controls for that report. A new AI analysis creates a new report ID; selecting a different incident invalidates the active report.
 
 The application performs no real remediation. See [workflow diagram](diagrams/workflow.mmd).

@@ -2,28 +2,34 @@
 
 ## Recorded automated result
 
-The current codebase contains 64 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
+The current codebase contains 68 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Recorded result (`dev` branch, Phase A UI work): **64 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
+Recorded result (`dev` branch, native Streamlit UI): **68 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
 
 All tests are offline. Provider tests use mocks or an in-process `httpx.MockTransport` and never contact Nebius. UI tests replace `ai_client.generate_report` with a mock that fails the test if any path tries to reach the provider, even when a local `.streamlit/secrets.toml` exists.
 
 ## Test inventory
 
-### `TestGuardBeeUI` (8) — headless Streamlit `AppTest`
+### `TestGuardBeeUI` (12) — headless Streamlit `AppTest`
 
-- `test_every_view_renders`
-- `test_open_buttons_reach_detail_and_sidebar_navigation_still_works`
-- `test_low_severity_is_not_labelled_normal`
-- `test_engine_classification_and_priority_are_displayed_when_provided`
-- `test_dynamic_content_is_escaped`
-- `test_validated_report_shows_citations_and_allows_one_decision`
+- `test_every_page_and_incident_renders`
+- `test_app_renders_no_raw_html`
+- `test_dashboard_open_button_shows_selected_incident`
+- `test_selection_survives_page_changes`
+- `test_unclassified_engine_output_is_never_labelled`
+- `test_engine_classification_priority_and_unassigned_severity_render`
+- `test_data_text_is_shown_literally`
+- `test_timeline_is_chronological`
+- `test_validated_report_allows_exactly_one_decision`
+- `test_changing_incident_invalidates_report`
 - `test_invalid_citations_keep_decision_locked`
 - `test_provider_failure_offers_retry_without_fabricating`
+
+UI specification checklist items that cannot be tested until the backend provides them: engine-produced NORMAL / INSUFFICIENT_EVIDENCE results for real incidents, partial validation with rejected-record reporting, and audit history that survives an app restart (SQLite). The classification and priority display is tested with a patched engine result.
 
 ### `TestReportValidation` (17)
 

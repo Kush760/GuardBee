@@ -30,6 +30,14 @@
 - The AI prompt now requests Observed facts / Inferred risk / Unknowns and limitations sections. Added `extract_citation_ids()`.
 - Added headless Streamlit UI tests (`tests/test_app_ui.py`). The suite grew from 54 to 64 tests.
 
+## Native Streamlit UI (`dev`)
+
+- Replaced the custom-HTML dark UI with native Streamlit components and a light honey theme, following the UI Member Frontend Specification: three sidebar pages (Dashboard, Security Incidents, Audit History), no `unsafe_allow_html`, and no external font download.
+- Dashboard: valid-incident count, classification counts (shown as "—" until the engine provides classes), severity counts including "Not assigned", fail-closed validation note, overview table, and an "Open in Security Incidents" action.
+- Security Incidents: filterable list, incident picker, classification with the specification's required wording, separate score / severity / investigation-priority metrics, a five-step progress bar, chronological timeline, triggered rules with points, observed facts / interpretation / unknowns, policy expanders, a labelled AI-generated section with cited IDs and Retry, and simulated decisions that show the saved time and the reason controls are locked.
+- Audit History: newest-first table with an explicit session-only warning until SQLite persistence exists.
+- UI tests rewritten for the new pages (12 tests). The suite grew from 64 to 68 tests.
+
 ## Documentation and delivery assets
 
 - Added structured project, technical, team, quality, diagram, CI, and shareable-handoff documentation.

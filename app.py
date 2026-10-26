@@ -1,22 +1,17 @@
-"""GuardBee Streamlit MVP – synthetic suspicious-login investigation only.
+"""GuardBee Streamlit MVP - synthetic suspicious-login investigation only.
 
-Four-view Wazuh-inspired security dashboard:
-  View 1 – Dashboard      (Security Overview / at-a-glance metrics)
-  View 2 – Incidents      (Browse & filter the synthetic incident collection)
-  View 3 – Incident Detail (Investigate one incident, AI explanation, Approve/Reject)
-  View 4 – Audit History  (Simulated session-only decision audit log)
-
-Backend contracts (engine.py, retrieval.py, ai_client.py, data_loader.py,
-workflow.py) are consumed, not re-implemented.  All UI state is managed in
-st.session_state.  Every dynamic value is HTML-escaped before it is placed in
-raw-HTML markup.
+Three native-Streamlit pages: Dashboard, Security Incidents, and Audit History.
+Risk facts come from engine.py, policies from retrieval.py, AI text from
+ai_client.py, and decision gates from workflow.py; this module only presents
+them. Dynamic text is shown in plain-text widgets (tables, metrics) or is
+Markdown-escaped first. No raw HTML is rendered.
 """
 
 from __future__ import annotations
 
-import html
 import os
-from datetime import datetime, timezone
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -35,668 +30,61 @@ from retrieval import DEFAULT_MIN_SIMILARITY, retrieve_policies
 from workflow import analysis_context_id, build_decision_record, can_record_decision
 
 ROOT = Path(__file__).parent
+st.set_page_config(page_title="GuardBee | Security Decision Copilot", page_icon="🐝", layout="wide")
 
-st.set_page_config(
-    page_title="GuardBee | Security Decision Copilot",
-    page_icon=str(ROOT / "assets" / "favicon.png"),
-    layout="wide",
+PAGES = ("Dashboard", "Security Incidents", "Audit History")
+
+# Wording required by the UI specification. The class itself must come from engine.py;
+# the UI never infers one from the score or severity.
+CLASSIFICATIONS = {
+    "SUSPICIOUS": ("red", "The available events match one or more configured suspicious patterns."),
+    "INSUFFICIENT_EVIDENCE": (
+        "orange",
+        "The available evidence is not sufficient to classify this activity as normal or suspicious.",
+    ),
+    "NORMAL": ("green", "No suspicious pattern was detected by the configured rules in the available events."),
+}
+SEVERITY_COLORS = {"HIGH": "red", "MEDIUM": "orange", "LOW": "blue"}
+NOT_ASSIGNED = "Not assigned"
+RISK_NOTE = (
+    "The risk score (0–100) and severity estimate investigation risk from synthetic evidence. "
+    "A high score is not proof of compromise."
 )
-
-# ---------------------------------------------------------------------------
-# Global CSS — Wazuh-inspired dark SOC/SIEM theme
-# ---------------------------------------------------------------------------
-st.markdown(
-    """
-<style>
-/* ── Fonts ──────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
-html, body, [class*="css"], .stApp {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background-color: #0a1628 !important;
-    color: #e2e8f0;
-}
-
-/* ── Main container ──────────────────────────────────────────────────── */
-.main .block-container {
-    padding-top: 1rem;
-    padding-bottom: 2rem;
-    max-width: 1300px;
-}
-
-/* ── Sidebar ──────────────────────────────────────────────────────────── */
-section[data-testid="stSidebar"] {
-    background: #06101f !important;
-    border-right: 1px solid #1e3a5f;
-    min-width: 230px !important;
-    max-width: 260px !important;
-}
-section[data-testid="stSidebar"] .block-container {
-    padding-top: 1.2rem;
-    padding-left: 1rem;
-    padding-right: 1rem;
-}
-.gb-sidebar-brand {
-    font-size: 1.15rem;
-    font-weight: 700;
-    color: #e2e8f0;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #1e3a5f;
-    margin-bottom: 1rem;
-    letter-spacing: -0.01em;
-}
-.gb-brand-badge {
-    width: 28px; height: 28px;
-    background: #3b82f6;
-    border-radius: 6px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.9rem;
-}
-.gb-sidebar-section {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: #4a7fa5;
-    margin: 1rem 0 0.4rem;
-}
-.gb-nav-item {
-    display: flex;
-    align-items: center;
-    gap: 0.55rem;
-    padding: 0.55rem 0.75rem;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: #94a3b8;
-    cursor: pointer;
-    margin-bottom: 0.15rem;
-    transition: background 0.15s;
-    border: none;
-    background: transparent;
-    text-decoration: none;
-    user-select: none;
-}
-.gb-nav-item:hover { background: #111a2e; color: #e2e8f0; }
-.gb-nav-item.active { background: #1e3a5f; color: #60a5fa; font-weight: 600; }
-.gb-nav-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.gb-sidebar-footer {
-    font-size: 0.72rem;
-    color: #4a7fa5;
-    line-height: 1.55;
-    margin-top: 1.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid #1e3a5f;
-}
-
-/* ── Page header bar ─────────────────────────────────────────────────── */
-.gb-topbar {
-    background: #111a2e;
-    border: 1px solid #1e3a5f;
-    border-radius: 8px;
-    padding: 0.9rem 1.4rem;
-    margin-bottom: 1.2rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.gb-topbar-left { display: flex; flex-direction: column; }
-.gb-topbar-title {
-    font-size: 1.2rem;
-    font-weight: 700;
-    color: #e2e8f0;
-    letter-spacing: -0.01em;
-    margin: 0;
-}
-.gb-topbar-sub {
-    font-size: 0.78rem;
-    color: #64748b;
-    margin-top: 0.15rem;
-}
-.gb-topbar-badge {
-    background: #0f2940;
-    border: 1px solid #1e3a5f;
-    border-radius: 6px;
-    padding: 0.35rem 0.85rem;
-    font-size: 0.75rem;
-    color: #60a5fa;
-    font-weight: 600;
-    font-family: 'JetBrains Mono', monospace;
-}
-.gb-safety-bar {
-    background: #0f2940;
-    border: 1px solid #1e3a5f;
-    border-left: 3px solid #3b82f6;
-    border-radius: 6px;
-    padding: 0.6rem 1rem;
-    font-size: 0.79rem;
-    color: #94a3b8;
-    margin-bottom: 1.2rem;
-    display: flex;
-    align-items: center;
-    gap: 0.55rem;
-}
-
-/* ── Metric cards ────────────────────────────────────────────────────── */
-.gb-metrics-row { display: flex; gap: 0.85rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
-.gb-metric {
-    background: #111a2e;
-    border: 1px solid #1e3a5f;
-    border-radius: 8px;
-    padding: 1.1rem 1.3rem;
-    flex: 1;
-    min-width: 140px;
-    position: relative;
-    overflow: hidden;
-}
-.gb-metric::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-    background: var(--accent, #3b82f6);
-    border-radius: 8px 8px 0 0;
-}
-.gb-metric-label {
-    font-size: 0.7rem;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-}
-.gb-metric-value {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #e2e8f0;
-    line-height: 1;
-    font-family: 'JetBrains Mono', monospace;
-}
-.gb-metric-sub {
-    font-size: 0.72rem;
-    color: #64748b;
-    margin-top: 0.3rem;
-}
-
-/* ── Section headers ─────────────────────────────────────────────────── */
-.gb-section-header {
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #4a7fa5;
-    padding: 0.4rem 0 0.4rem;
-    border-bottom: 1px solid #1e3a5f;
-    margin-bottom: 0.9rem;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
-/* ── Severity / classification badges ───────────────────────────────── */
-.sev-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.2rem 0.65rem;
-    border-radius: 5px;
-    font-weight: 600;
-    font-size: 0.72rem;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    white-space: nowrap;
-}
-.sev-high    { background: #3b0f1a; color: #f87171; border: 1px solid #7f1d2e; }
-.sev-medium  { background: #2d1f00; color: #fbbf24; border: 1px solid #78450c; }
-.sev-low     { background: #052010; color: #4ade80; border: 1px solid #134d28; }
-.sev-info    { background: #0f1e3a; color: #60a5fa; border: 1px solid #1e3a5f; }
-
-/* ── Data table wrapper ──────────────────────────────────────────────── */
-.gb-table-wrap {
-    background: #111a2e;
-    border: 1px solid #1e3a5f;
-    border-radius: 8px;
-    overflow: hidden;
-    margin-bottom: 1rem;
-}
-.gb-table-head {
-    display: grid;
-    padding: 0.6rem 1rem;
-    background: #0f2940;
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: #4a7fa5;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    gap: 0.5rem;
-}
-.gb-table-row {
-    display: grid;
-    padding: 0.7rem 1rem;
-    font-size: 0.82rem;
-    color: #cbd5e1;
-    gap: 0.5rem;
-    border-top: 1px solid #1a2d47;
-    align-items: center;
-    cursor: pointer;
-    transition: background 0.12s;
-}
-.gb-table-row:hover { background: #142236; }
-
-/* ── Incident table: 7 columns ──────────────────────────────────────── */
-.gb-inc-cols {
-    grid-template-columns: 90px 1fr 150px 110px 80px 100px 130px;
-}
-
-/* ── Timeline table: 5 columns ──────────────────────────────────────── */
-.gb-timeline-cols {
-    grid-template-columns: 80px 170px 140px 140px 100px;
-}
-
-/* ── Monospace cells ─────────────────────────────────────────────────── */
-.mono {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.78rem;
-    color: #7dd3fc;
-}
-
-/* ── Info / detail cards ─────────────────────────────────────────────── */
-.gb-info-card {
-    background: #111a2e;
-    border: 1px solid #1e3a5f;
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 0.9rem;
-    font-size: 0.86rem;
-}
-.gb-info-card .field-label {
-    font-size: 0.67rem;
-    color: #4a7fa5;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 600;
-    margin-bottom: 0.2rem;
-}
-.gb-info-card .field-value { color: #e2e8f0; font-weight: 500; }
-.gb-info-fields { display: flex; gap: 2rem; flex-wrap: wrap; }
-
-/* ── Rule-hit cards ──────────────────────────────────────────────────── */
-.gb-rule-card {
-    background: #111a2e;
-    border: 1px solid #1e3a5f;
-    border-left: 3px solid #3b82f6;
-    border-radius: 0 8px 8px 0;
-    padding: 0.8rem 1.1rem;
-    margin-bottom: 0.7rem;
-}
-.gb-rule-id { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: #3b82f6; font-weight: 600; margin-bottom: 0.15rem; }
-.gb-rule-flag { font-size: 0.88rem; color: #e2e8f0; font-weight: 600; margin-bottom: 0.3rem; }
-.gb-rule-pts { font-size: 0.74rem; color: #64748b; }
-.gb-rule-evids { margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.gb-evid-tag {
-    background: #0f2940; color: #60a5fa;
-    font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
-    padding: 0.12rem 0.45rem; border-radius: 4px; border: 1px solid #1e3a5f;
-}
-.gb-no-rules {
-    background: #052010; border: 1px solid #134d28; border-radius: 6px;
-    padding: 0.8rem 1.1rem; color: #4ade80; font-size: 0.85rem;
-    display: flex; align-items: center; gap: 0.45rem;
-}
-
-/* ── Policy cards ────────────────────────────────────────────────────── */
-.gb-policy-card {
-    background: #111a2e;
-    border: 1px solid #1e3a5f;
-    border-left: 3px solid #0ea5e9;
-    border-radius: 0 8px 8px 0;
-    padding: 0.9rem 1.15rem;
-    margin-bottom: 0.75rem;
-}
-.gb-policy-id { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: #0ea5e9; font-weight: 600; margin-bottom: 0.15rem; }
-.gb-policy-title { font-size: 0.9rem; color: #e2e8f0; font-weight: 600; margin-bottom: 0.5rem; }
-.gb-policy-sim-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.55rem; }
-.gb-policy-sim-label { font-size: 0.7rem; color: #64748b; white-space: nowrap; }
-.gb-policy-sim-bar { flex: 1; height: 5px; background: #1e3a5f; border-radius: 3px; overflow: hidden; }
-.gb-policy-sim-fill { height: 100%; background: #0ea5e9; border-radius: 3px; }
-.gb-policy-sim-pct { font-size: 0.72rem; color: #0ea5e9; font-weight: 600; font-family: 'JetBrains Mono', monospace; min-width: 38px; text-align: right; }
-.gb-policy-text { font-size: 0.83rem; color: #94a3b8; line-height: 1.6; }
-
-/* ── State messages ──────────────────────────────────────────────────── */
-.gb-msg-info {
-    background: #0f1e3a; border: 1px solid #1e3a5f; border-radius: 6px;
-    padding: 0.8rem 1.1rem; color: #94a3b8; font-size: 0.83rem;
-    display: flex; align-items: flex-start; gap: 0.5rem; line-height: 1.5;
-}
-.gb-msg-warn {
-    background: #2d1f00; border: 1px solid #78450c; border-left: 3px solid #f59e0b;
-    border-radius: 6px; padding: 0.8rem 1.1rem; color: #fbbf24; font-size: 0.83rem;
-    display: flex; align-items: flex-start; gap: 0.5rem;
-}
-.gb-msg-error {
-    background: #3b0f1a; border: 1px solid #7f1d2e; border-radius: 6px;
-    padding: 0.8rem 1.1rem; color: #f87171; font-size: 0.83rem;
-}
-.gb-msg-success {
-    background: #052010; border: 1px solid #134d28; border-radius: 6px;
-    padding: 0.65rem 1rem; color: #4ade80; font-size: 0.82rem;
-    display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.7rem;
-}
-
-/* ── AI section ──────────────────────────────────────────────────────── */
-.gb-ai-divider {
-    display: flex; align-items: center; gap: 0.75rem;
-    margin: 1.4rem 0 0.9rem;
-    color: #4a7fa5; font-size: 0.7rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.1em;
-}
-.gb-ai-divider::before, .gb-ai-divider::after {
-    content: ''; flex: 1; height: 1px; background: #1e3a5f;
-}
-.gb-ai-label {
-    background: #111a2e; border: 1px solid #1e3a5f; border-radius: 4px;
-    padding: 0.18rem 0.65rem; white-space: nowrap;
-    display: flex; align-items: center; gap: 0.35rem;
-}
-.gb-model-chip {
-    background: #0f2940; border: 1px solid #1e3a5f; border-radius: 5px;
-    padding: 0.45rem 0.85rem; font-size: 0.75rem; color: #60a5fa;
-    margin-bottom: 0.85rem; font-family: 'JetBrains Mono', monospace;
-    display: inline-block;
-}
-.gb-report-box {
-    background: #111a2e; border: 1px solid #1e3a5f; border-radius: 8px;
-    padding: 1.2rem 1.4rem; margin-top: 0.85rem; color: #e2e8f0; line-height: 1.65;
-}
-
-/* ── Decision controls ───────────────────────────────────────────────── */
-.gb-decision-panel {
-    background: #111a2e; border: 1px solid #1e3a5f; border-radius: 8px;
-    padding: 1rem 1.25rem; margin-bottom: 0.85rem;
-}
-.gb-decision-field-label {
-    font-size: 0.67rem; color: #4a7fa5; text-transform: uppercase;
-    letter-spacing: 0.08em; margin-bottom: 0.3rem; font-weight: 600;
-}
-.gb-decision-field-value { font-size: 0.9rem; color: #e2e8f0; font-weight: 600; }
-.gb-sim-note {
-    font-size: 0.76rem; color: #64748b;
-    padding: 0.35rem 0; margin-bottom: 0.75rem;
-    display: flex; align-items: center; gap: 0.4rem;
-}
-.gb-gate-locked {
-    background: #3b0f1a; border: 1px solid #7f1d2e; border-radius: 6px;
-    padding: 0.75rem 1rem; color: #f87171; font-size: 0.83rem;
-    margin-bottom: 0.75rem; display: flex; align-items: flex-start; gap: 0.4rem;
-}
-.gb-gate-used {
-    background: #0f1e3a; border: 1px solid #1e3a5f; border-radius: 6px;
-    padding: 0.75rem 1rem; color: #64748b; font-size: 0.83rem;
-    margin-bottom: 0.75rem; display: flex; align-items: flex-start; gap: 0.4rem;
-}
-.gb-decision-result {
-    background: #0f2940; border: 1px solid #1e3a5f; border-radius: 6px;
-    padding: 0.85rem 1.15rem; margin: 0.85rem 0;
-}
-.gb-decision-result .dr-label {
-    font-size: 0.67rem; color: #4a7fa5; text-transform: uppercase;
-    letter-spacing: 0.08em; margin-bottom: 0.2rem; font-weight: 600;
-}
-.dr-approved { color: #4ade80; font-weight: 700; font-size: 0.9rem; }
-.dr-rejected { color: #f87171; font-weight: 700; font-size: 0.9rem; }
-
-/* ── Audit table ─────────────────────────────────────────────────────── */
-.gb-audit-cols {
-    grid-template-columns: 160px 90px 100px 90px 55px 260px;
-}
-.gb-audit-header {
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.09em; color: #4a7fa5;
-    padding-bottom: 0.35rem; border-bottom: 1px solid #1e3a5f;
-    margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.4rem;
-}
-.gb-audit-empty {
-    background: #111a2e; border: 1px solid #1e3a5f; border-radius: 6px;
-    padding: 2rem; text-align: center; color: #4a7fa5; font-size: 0.85rem;
-}
-
-/* ── Back link button ────────────────────────────────────────────────── */
-.gb-back-btn {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    background: #111a2e; border: 1px solid #1e3a5f; border-radius: 6px;
-    padding: 0.4rem 0.9rem; font-size: 0.8rem; color: #94a3b8;
-    cursor: pointer; margin-bottom: 1rem; font-weight: 500;
-    transition: border-color 0.15s, color 0.15s;
-}
-.gb-back-btn:hover { border-color: #3b82f6; color: #60a5fa; }
-
-/* ── Event type cell ─────────────────────────────────────────────────── */
-.evt-fail    { color: #f87171; font-weight: 600; }
-.evt-success { color: #4ade80; font-weight: 600; }
-.evt-ip-unfamiliar { color: #fbbf24; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
-.evt-ip-known { color: #94a3b8; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
-
-/* ── Streamlit overrides ─────────────────────────────────────────────── */
-button[kind="primary"] {
-    background-color: #1d4ed8 !important;
-    color: #ffffff !important;
-    border: 1px solid #2563eb !important;
-    border-radius: 6px !important;
-    font-weight: 600 !important;
-    transition: background-color 0.15s ease !important;
-}
-button[kind="primary"]:hover:not(:disabled) {
-    background-color: #2563eb !important;
-}
-button[kind="secondary"] {
-    background-color: #111a2e !important;
-    color: #e2e8f0 !important;
-    border: 1px solid #1e3a5f !important;
-    border-radius: 6px !important;
-    font-weight: 500 !important;
-}
-button[kind="secondary"]:hover:not(:disabled) {
-    background-color: #1e3a5f !important;
-    border-color: #3b82f6 !important;
-}
-.stTabs [data-baseweb="tab-list"] {
-    gap: 0;
-    background: #0f2940;
-    border-radius: 8px 8px 0 0;
-    padding: 0.3rem 0.3rem 0;
-    border: 1px solid #1e3a5f;
-    border-bottom: none;
-}
-.stTabs [data-baseweb="tab"] {
-    border-radius: 6px 6px 0 0 !important;
-    padding: 0.5rem 1.25rem !important;
-    font-size: 0.82rem !important;
-    font-weight: 600 !important;
-    color: #4a7fa5 !important;
-    background: transparent !important;
-    border: none !important;
-}
-.stTabs [aria-selected="true"] {
-    background: #111a2e !important;
-    color: #60a5fa !important;
-    border-bottom: 2px solid #3b82f6 !important;
-}
-.stTabs [data-baseweb="tab-panel"] {
-    background: #111a2e;
-    border: 1px solid #1e3a5f;
-    border-top: none;
-    border-radius: 0 0 8px 8px;
-    padding: 1.2rem 1.5rem;
-}
-/* search input */
-.stTextInput > div > div > input {
-    background: #0f2940 !important;
-    border: 1px solid #1e3a5f !important;
-    color: #e2e8f0 !important;
-    border-radius: 6px !important;
-}
-/* selectbox */
-.stSelectbox > div > div {
-    background: #0f2940 !important;
-    border: 1px solid #1e3a5f !important;
-    border-radius: 6px !important;
-    color: #e2e8f0 !important;
-}
-/* radio in sidebar */
-[data-testid="stSidebar"] .stRadio > label { display: none; }
-[data-testid="stSidebar"] .stRadio > div { gap: 0.2rem !important; flex-direction: column !important; }
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label {
-    display: flex !important; align-items: center !important; gap: 0.65rem !important;
-    padding: 0.5rem 0.75rem !important; border-radius: 6px !important;
-    font-size: 0.86rem !important; font-weight: 500 !important;
-    color: #94a3b8 !important; cursor: pointer !important; margin-bottom: 0.15rem !important;
-    transition: background 0.12s, color 0.12s !important;
-}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label:hover {
-    background: #111a2e !important; color: #e2e8f0 !important;
-}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[data-baseweb="radio"]:has(input:checked),
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] [aria-checked="true"] {
-    background: #1e3a5f !important; color: #60a5fa !important;
-}
-[data-testid="stSidebar"] .stRadio [data-testid="stMarkdownContainer"] p {
-    font-size: 0.86rem !important;
-    font-weight: 500 !important;
-    color: #cbd5e1 !important;
-    margin: 0 !important;
-}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label:hover [data-testid="stMarkdownContainer"] p {
-    color: #ffffff !important;
-}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[data-baseweb="radio"]:has(input:checked) [data-testid="stMarkdownContainer"] p,
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] [aria-checked="true"] [data-testid="stMarkdownContainer"] p {
-    color: #60a5fa !important;
-    font-weight: 600 !important;
-}
-/* dataframe in dark */
-.stDataFrame { background: #111a2e !important; }
-</style>
-""",
-    unsafe_allow_html=True,
+UNKNOWNS = (
+    "Whether the account owner made these logins; the data does not verify identity.",
+    "Device, browser, and VPN details; they are not present in the data.",
+    "Any activity outside this synthetic event set.",
 )
+STEP_MARKS = {"done": ":green[✔]", "active": ":orange[●]", "locked": ":gray[○]", "blocked": ":red[✖]"}
 
-# ---------------------------------------------------------------------------
-# SVG icon helpers (inline, no external dep)
-# ---------------------------------------------------------------------------
-def _icon(path_d: str, size: int = 14) -> str:
-    return (
-        f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" '
-        f'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
-        f'style="display:inline-block;vertical-align:middle;flex-shrink:0">'
-        f'{path_d}</svg>'
-    )
+_MARKDOWN_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+\-.!|<>~$:])")
 
 
-ICON_SHIELD   = _icon('<path d="M12 2L4.5 5.5v5.5c0 4.8 3.2 9.3 7.5 10.5 4.3-1.2 7.5-5.7 7.5-10.5V5.5L12 2z"/>', 16)
-ICON_DASH     = _icon('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>')
-ICON_LIST     = _icon('<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>')
-ICON_AUDIT    = _icon('<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 12h6"/><path d="M9 16h6"/>')
-ICON_DETAIL   = _icon('<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>')
-ICON_ALERT    = _icon('<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>')
-ICON_WARN     = _icon('<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>')
-ICON_CHECK    = _icon('<polyline points="20 6 9 17 4 12"/>')
-ICON_CROSS    = _icon('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>')
-ICON_LOCK     = _icon('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>')
-ICON_POLICY   = _icon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>')
-ICON_SPARKLE  = _icon('<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/>')
-ICON_BACK     = _icon('<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>')
-ICON_FLAG     = _icon('<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>')
-ICON_SCALE    = _icon('<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>')
-ICON_INFO     = _icon('<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>')
-ICON_CLOCK    = _icon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>')
+def md(value: Any) -> str:
+    """Escape Markdown so data text is always shown literally."""
+    return _MARKDOWN_SPECIAL.sub(r"\\\1", str(value))
 
 
 # ---------------------------------------------------------------------------
-# Severity badge HTML
+# Configuration and session state
 # ---------------------------------------------------------------------------
-def esc(value: Any) -> str:
-    """Escape any dynamic value before it is placed in raw-HTML markup."""
-    return html.escape(str(value))
-
-
-def severity_badge(severity: str | None) -> str:
-    meta = {
-        "HIGH":   ("sev-high",   "●", "HIGH RISK"),
-        "MEDIUM": ("sev-medium", "●", "MEDIUM RISK"),
-        "LOW":    ("sev-low",    "●", "LOW RISK"),
-    }
-    if severity is None:
-        return '<span class="sev-badge sev-info">NO SEVERITY</span>'
-    cls, dot, label = meta.get(severity, ("sev-info", "●", esc(severity)))
-    return f'<span class="sev-badge {cls}">{dot} {label}</span>'
-
-
-# Activity classes are produced by engine.py. The UI never derives them from
-# severity: a LOW or zero score does not prove that activity is normal.
-CLASSIFICATION_META = {
-    "suspicious":            ("sev-high",   "SUSPICIOUS"),
-    "insufficient_evidence": ("sev-medium", "INSUFFICIENT EVIDENCE"),
-    "normal":                ("sev-low",    "NORMAL ACTIVITY"),
-}
-
-
-def classification_of(analysis: dict[str, Any]) -> str | None:
-    """Return the engine-provided activity class, or None if the engine gives none."""
-    value = analysis.get("classification")
-    return value if value in CLASSIFICATION_META else None
-
-
-def class_badge(analysis: dict[str, Any]) -> str:
-    cls, label = CLASSIFICATION_META[classification_of(analysis)]
-    return f'<span class="sev-badge {cls}">● {label}</span>'
-
-
-# ---------------------------------------------------------------------------
-# Parse timestamp safely
-# ---------------------------------------------------------------------------
-def _parse_ts(ts: str) -> datetime | None:
+def read_api_key() -> str:
+    """Prefer Streamlit secrets, with an environment variable for local development."""
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        return None
+        return str(st.secrets.get("NEBIUS_API_KEY", ""))
+    except FileNotFoundError:
+        return os.getenv("NEBIUS_API_KEY", "")
 
 
-def _fmt_ts(ts: str) -> str:
-    dt = _parse_ts(ts)
-    if dt is None:
-        return ts
-    return dt.strftime("%Y-%m-%d %H:%M UTC")
+def read_model() -> str:
+    """Allow an account-approved model ID in secrets or the local environment."""
+    try:
+        return str(st.secrets.get("NEBIUS_MODEL", configured_model()))
+    except FileNotFoundError:
+        return configured_model()
 
 
-def _latest_event_time(incident: dict[str, Any]) -> str:
-    times = [e["time_utc"] for e in incident.get("events", [])]
-    valid = [t for t in times if _parse_ts(t) is not None]
-    if not valid:
-        return "—"
-    return _fmt_ts(max(valid))
-
-
-def is_high_risk(analysis: dict[str, Any]) -> bool:
-    return analysis.get("severity") == "HIGH"
-
-
-RISK_DISCLAIMER = (
-    "Risk score and severity estimate investigation risk from synthetic evidence. "
-    "HIGH risk is not proof of compromise."
-)
-
-
-# ---------------------------------------------------------------------------
-# Session-state helpers
-# ---------------------------------------------------------------------------
 def initialize_session() -> None:
-    st.session_state.setdefault("view", "dashboard")
-    st.session_state.setdefault("selected_incident_id", None)
-    st.session_state.setdefault("incident_filter", "All")
-    st.session_state.setdefault("incident_search", "")
     st.session_state.setdefault("report", None)
     st.session_state.setdefault("report_status", None)
     st.session_state.setdefault("audit", [])
@@ -704,19 +92,11 @@ def initialize_session() -> None:
     st.session_state.setdefault("report_context_id", None)
     st.session_state.setdefault("active_report_id", None)
     st.session_state.setdefault("report_sequence", 0)
-    st.session_state.setdefault("active_incident_id", None)
-
-
-def navigate(view: str, incident_id: str | None = None) -> None:
-    st.session_state.view = view
-    if incident_id is not None:
-        if st.session_state.get("active_incident_id") != incident_id:
-            st.session_state.active_incident_id = incident_id
-            clear_report_state()
-        st.session_state.selected_incident_id = incident_id
+    st.session_state.setdefault("current_incident_id", None)
 
 
 def clear_report_state() -> None:
+    """Invalidate a report whenever its incident or analysis context changes."""
     st.session_state.report = None
     st.session_state.report_status = None
     st.session_state.report_context_id = None
@@ -724,30 +104,34 @@ def clear_report_state() -> None:
     st.session_state.decision = None
 
 
-def read_api_key() -> str:
-    try:
-        return str(st.secrets.get("NEBIUS_API_KEY", ""))
-    except (FileNotFoundError, AttributeError):
-        return os.getenv("NEBIUS_API_KEY", "")
+def reset_investigation_state(incident_id: str) -> None:
+    if st.session_state.get("active_incident_id") != incident_id:
+        st.session_state.active_incident_id = incident_id
+        clear_report_state()
 
 
-def read_model() -> str:
-    try:
-        return str(st.secrets.get("NEBIUS_MODEL", configured_model()))
-    except (FileNotFoundError, AttributeError):
-        return configured_model()
+def open_incident(incident_id: str) -> None:
+    """Button callback: show one incident on the Security Incidents page."""
+    st.session_state.page = "Security Incidents"
+    st.session_state.incident_filter = "All"
+    st.session_state.current_incident_id = incident_id
+
+
+def sync_incident_picker() -> None:
+    st.session_state.current_incident_id = st.session_state.incident_picker
 
 
 def audit_decision(
-    incident: dict[str, Any], decision: str, outcome: str, current_ctx: str
+    incident: dict[str, Any], decision: str, outcome: str, current_context_id: str
 ) -> bool:
+    """Record at most one simulated decision for the active validated report."""
     record = build_decision_record(
         incident["id"],
         decision,
         outcome,
         st.session_state.report,
         st.session_state.report_context_id,
-        current_ctx,
+        current_context_id,
         st.session_state.active_report_id,
         st.session_state.decision,
     )
@@ -762,36 +146,86 @@ def run_ai_analysis(
     incident: dict[str, Any],
     analysis: dict[str, Any],
     matched_policies: list[dict[str, Any]],
-    current_ctx: str,
+    current_context_id: str,
 ) -> None:
     """Request a report and keep it only if its citations validate; never fabricate one."""
     clear_report_state()
     try:
-        with st.spinner("Calling Nebius Token Factory — GuardBee does not fabricate AI reports…"):
-            report = generate_report(
-                read_api_key(), incident, analysis, matched_policies, model=read_model()
-            )
+        with st.spinner("Calling Nebius Token Factory. GuardBee does not fabricate AI reports..."):
+            report = generate_report(read_api_key(), incident, analysis, matched_policies, model=read_model())
         usable, reason = validate_report_citations(
             report,
             [event["id"] for event in incident["events"]],
-            [pol["id"] for pol in matched_policies],
+            [policy["id"] for policy in matched_policies],
         )
         if not usable:
             st.session_state.report_status = reason
         else:
             st.session_state.report = report
             st.session_state.report_status = reason
-            st.session_state.report_context_id = current_ctx
+            st.session_state.report_context_id = current_context_id
             st.session_state.report_sequence += 1
-            st.session_state.active_report_id = (
-                f"{current_ctx}:{st.session_state.report_sequence}"
-            )
+            st.session_state.active_report_id = f"{current_context_id}:{st.session_state.report_sequence}"
     except AIReportError as exc:
         st.session_state.report_status = str(exc)
 
 
 # ---------------------------------------------------------------------------
-# Boot: load data
+# Presentation helpers (read engine output; never compute risk facts)
+# ---------------------------------------------------------------------------
+def classification_of(analysis: dict[str, Any]) -> str | None:
+    value = analysis.get("classification")
+    return value if value in CLASSIFICATIONS else None
+
+
+def classification_text(analysis: dict[str, Any]) -> str:
+    value = classification_of(analysis)
+    return value.replace("_", " ") if value else "Not classified"
+
+
+def severity_text(analysis: dict[str, Any]) -> str:
+    return analysis.get("severity") or NOT_ASSIGNED
+
+
+def priority_text(analysis: dict[str, Any]) -> str:
+    return analysis.get("investigation_priority") or "Not provided"
+
+
+def severity_markdown(analysis: dict[str, Any]) -> str:
+    severity = analysis.get("severity")
+    if severity in SEVERITY_COLORS:
+        return f":{SEVERITY_COLORS[severity]}-background[{severity}]"
+    return md(severity_text(analysis))
+
+
+def overview_rows(incidents: list[dict[str, Any]], analyses: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "Incident": incident["id"],
+            "Title": incident["title"],
+            "Classification": classification_text(analyses[incident["id"]]),
+            "Risk score": analyses[incident["id"]]["risk_score"],
+            "Severity": severity_text(analyses[incident["id"]]),
+            "Investigation priority": priority_text(analyses[incident["id"]]),
+            "Events": len(incident["events"]),
+        }
+        for incident in incidents
+    ]
+
+
+OVERVIEW_COLUMNS = {
+    "Risk score": st.column_config.ProgressColumn(
+        "Risk score", min_value=0, max_value=100, format="%d", help=RISK_NOTE
+    ),
+}
+
+
+def event_time(event: dict[str, Any]) -> datetime:
+    return datetime.fromisoformat(event["time_utc"].replace("Z", "+00:00"))
+
+
+# ---------------------------------------------------------------------------
+# Data
 # ---------------------------------------------------------------------------
 initialize_session()
 
@@ -799,930 +233,398 @@ try:
     incidents = load_incidents(ROOT / "data" / "incidents.json")
     policies = load_policies(ROOT / "data" / "policies.json")
 except DataValidationError as exc:
-    st.error("GuardBee could not load its synthetic data safely.")
-    st.markdown(
-        f'<div class="gb-msg-error">{ICON_ALERT} '
-        "The data file has a validation problem. Correct the file and reload the app to continue."
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    st.title("🐝 GuardBee")
+    st.error("GuardBee could not load its synthetic data safely, so no incidents or counts are shown.")
+    st.caption(f"Fix the data file and reload the app: {md(exc)}")
     st.stop()
 
-incident_by_id: dict[str, dict[str, Any]] = {inc["id"]: inc for inc in incidents}
-
-# Pre-compute analysis for every incident (used across dashboard + list)
-analyses: dict[str, dict[str, Any]] = {
-    inc["id"]: analyze_incident(inc) for inc in incidents
-}
+incident_by_id = {incident["id"]: incident for incident in incidents}
+analyses = {incident["id"]: analyze_incident(incident) for incident in incidents}
+any_classified = any(classification_of(analysis) for analysis in analyses.values())
+if st.session_state.current_incident_id not in incident_by_id:
+    st.session_state.current_incident_id = incidents[0]["id"]
 
 # ---------------------------------------------------------------------------
-# Sidebar — brand + navigation
+# Sidebar
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown(
-        '<div class="gb-sidebar-brand">'
-        '<div class="gb-brand-badge">🐝</div>'
-        "GuardBee"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="gb-sidebar-section">Navigation</div>', unsafe_allow_html=True)
-
-    nav_options = {
-        "dashboard":  "📊  Dashboard",
-        "incidents":  "🛡️  Security Incidents",
-        "audit":      "📋  Audit History",
-    }
-    nav_labels = list(nav_options.values())
-    nav_keys   = list(nav_options.keys())
-
-    # Keep the radio in sync with programmatic navigation (detail → incidents),
-    # and navigate only when the user changes it. Comparing the radio value with
-    # the view on every run would bounce the user out of the detail view.
-    cur_view = st.session_state.view
-    st.session_state.nav_radio = nav_options[cur_view if cur_view in nav_keys else "incidents"]
-
-    def _on_nav_change() -> None:
-        navigate(nav_keys[nav_labels.index(st.session_state.nav_radio)])
-
-    st.radio(
-        "Navigation",
-        nav_labels,
-        label_visibility="collapsed",
-        key="nav_radio",
-        on_change=_on_nav_change,
-    )
-
-    # Quick-stats
-    total = len(incidents)
-    sev_counts: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
-    class_counts: dict[str, int] = {key: 0 for key in CLASSIFICATION_META}
-    for a in analyses.values():
-        if a.get("severity") in sev_counts:
-            sev_counts[a["severity"]] += 1
-        if classification_of(a):
-            class_counts[classification_of(a)] += 1
-    classified = sum(class_counts.values())
-
-    st.markdown('<div class="gb-sidebar-section">Quick Stats</div>', unsafe_allow_html=True)
-    class_line = (
-        f'<br><span style="color:#f87171;font-weight:700">{class_counts["suspicious"]}</span> Suspicious &nbsp;·&nbsp;'
-        f'<span style="color:#fbbf24;font-weight:700">{class_counts["insufficient_evidence"]}</span> Insufficient &nbsp;·&nbsp;'
-        f'<span style="color:#4ade80;font-weight:700">{class_counts["normal"]}</span> Normal'
-        if classified
-        else ""
-    )
-    st.markdown(
-        '<div style="font-size:0.8rem;color:#94a3b8;line-height:2;">'
-        f'<span style="color:#f87171;font-weight:700">{sev_counts["HIGH"]}</span> High &nbsp;·&nbsp;'
-        f'<span style="color:#fbbf24;font-weight:700">{sev_counts["MEDIUM"]}</span> Medium &nbsp;·&nbsp;'
-        f'<span style="color:#4ade80;font-weight:700">{sev_counts["LOW"]}</span> Low &nbsp;·&nbsp;'
-        f'<span style="color:#60a5fa;font-weight:700">{total}</span> Total'
-        f"{class_line}</div>",
-        unsafe_allow_html=True,
-    )
-
-    audit_count = len(st.session_state.audit)
-    if audit_count:
-        st.markdown(
-            f'<div style="margin-top:0.8rem;font-size:0.75rem;color:#4a7fa5">'
-            f'{ICON_AUDIT} {audit_count} simulated decision{"s" if audit_count != 1 else ""} this session'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-    st.markdown(
-        '<div class="gb-sidebar-footer">'
-        "Synthetic incidents only.<br>"
-        "Risk scores are deterministic Python rules — AI does not compute scores.<br>"
-        "Audit history resets on session end."
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Safety banner (shown on all views)
-# ---------------------------------------------------------------------------
-st.markdown(
-    f'<div class="gb-safety-bar">{ICON_LOCK}&nbsp;'
-    "<strong>Demo safety:</strong>&nbsp; GuardBee never changes real accounts, sessions, or systems. "
-    "All incidents, accounts, and IP addresses are synthetic. "
-    "Audit history is temporary to this browser session only."
-    "</div>",
-    unsafe_allow_html=True,
-)
-
-
-# ===========================================================================
-# VIEW RENDERING
-# ===========================================================================
-
-current_view = st.session_state.view
-
-
-# ---------------------------------------------------------------------------
-# Helper: render event timeline
-# ---------------------------------------------------------------------------
-def render_timeline(incident: dict[str, Any]) -> None:
-    known_ips = set(incident.get("known_ips", []))
-    try:
-        events = sorted(
-            incident["events"],
-            key=lambda e: (_parse_ts(e["time_utc"]) or datetime.min.replace(tzinfo=timezone.utc)),
-        )
-    except Exception:
-        events = incident["events"]
-
-    header_html = (
-        '<div class="gb-table-wrap">'
-        '<div class="gb-table-head gb-timeline-cols">'
-        "<span>Event ID</span><span>Time (UTC)</span><span>Type</span>"
-        "<span>IP Address</span><span>Country</span>"
-        "</div>"
-    )
-    rows_html = ""
-    for evt in events:
-        is_fail = evt["type"] == "login_failed"
-        is_unfamiliar = evt["ip"] not in known_ips
-        ts_fmt = _fmt_ts(evt["time_utc"])
-        type_cls = "evt-fail" if is_fail else "evt-success"
-        type_lbl = ("✕ login_failed" if is_fail else "✓ login_success")
-        ip_cls = "evt-ip-unfamiliar" if is_unfamiliar else "evt-ip-known"
-        ip_lbl = esc(evt["ip"]) + (" ⚑" if is_unfamiliar else "")
-        rows_html += (
-            f'<div class="gb-table-row gb-timeline-cols">'
-            f'<span class="mono">{esc(evt["id"])}</span>'
-            f'<span class="mono" style="color:#94a3b8">{esc(ts_fmt)}</span>'
-            f'<span class="{type_cls}">{type_lbl}</span>'
-            f'<span class="{ip_cls}">{ip_lbl}</span>'
-            f'<span style="color:#94a3b8">{esc(evt["country"])}</span>'
-            f"</div>"
-        )
-    st.markdown(header_html + rows_html + "</div>", unsafe_allow_html=True)
-    if known_ips:
-        st.markdown(
-            f'<div style="font-size:0.73rem;color:#64748b;margin-top:0.3rem">'
-            f"⚑ Unfamiliar IP (not in known IPs: {esc(', '.join(sorted(known_ips)))})"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Helper: render rule hits
-# ---------------------------------------------------------------------------
-def render_rule_hits(analysis: dict[str, Any]) -> None:
-    if not analysis["rule_hits"]:
-        st.markdown(
-            f'<div class="gb-no-rules">{ICON_CHECK} No GuardBee risk rules fired for this synthetic incident.</div>',
-            unsafe_allow_html=True,
-        )
-        return
-    for hit in analysis["rule_hits"]:
-        evids_html = "".join(
-            f'<span class="gb-evid-tag">{esc(eid)}</span>' for eid in hit.get("evidence_ids", [])
-        ) or "<span style='color:#64748b;font-size:0.75rem'>No linked event IDs</span>"
-        border_color = "#ef4444" if hit["points"] >= 30 else "#f59e0b" if hit["points"] >= 10 else "#3b82f6"
-        st.markdown(
-            f'<div class="gb-rule-card" style="border-left-color:{border_color}">'
-            f'<div class="gb-rule-id">{esc(hit["rule_id"])}</div>'
-            f'<div class="gb-rule-flag">{esc(hit["flag"])}</div>'
-            f'<div class="gb-rule-pts">+{int(hit["points"])} risk points</div>'
-            f'<div class="gb-rule-evids">{evids_html}</div>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Helper: render policy cards
-# ---------------------------------------------------------------------------
-def render_policy_cards(matched_policies: list[dict[str, Any]]) -> None:
-    for pol in matched_policies:
-        score = float(pol["match_score"])
-        bar_pct = min(int(score / 0.5 * 100), 100)
-        st.markdown(
-            f'<div class="gb-policy-card">'
-            f'<div class="gb-policy-id">{esc(pol["id"])}</div>'
-            f'<div class="gb-policy-title">{esc(pol["title"])}</div>'
-            f'<div class="gb-policy-sim-row">'
-            f'<span class="gb-policy-sim-label">TF-IDF similarity</span>'
-            f'<div class="gb-policy-sim-bar"><div class="gb-policy-sim-fill" style="width:{bar_pct}%"></div></div>'
-            f'<span class="gb-policy-sim-pct">{score:.3f}</span>'
-            f"</div>"
-            f'<div class="gb-policy-text">{esc(pol["text"])}</div>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-
-# ===========================================================================
-# VIEW 1 — DASHBOARD
-# ===========================================================================
-if current_view == "dashboard":
-    st.markdown(
-        '<div class="gb-topbar">'
-        '<div class="gb-topbar-left">'
-        f'<div class="gb-topbar-title">{ICON_DASH}&nbsp; Security Overview</div>'
-        '<div class="gb-topbar-sub">Synthetic login incident investigation &nbsp;·&nbsp; Deterministic detection</div>'
-        "</div>"
-        '<div class="gb-topbar-badge">SIMULATION ONLY</div>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    # Metric cards
-    st.markdown(
-        f"""
-        <div class="gb-metrics-row">
-          <div class="gb-metric" style="--accent:#60a5fa">
-            <div class="gb-metric-label">Total Incidents</div>
-            <div class="gb-metric-value">{total}</div>
-            <div class="gb-metric-sub">Synthetic dataset</div>
-          </div>
-          <div class="gb-metric" style="--accent:#ef4444">
-            <div class="gb-metric-label">High Severity</div>
-            <div class="gb-metric-value">{sev_counts["HIGH"]}</div>
-            <div class="gb-metric-sub">Risk score ≥ 70</div>
-          </div>
-          <div class="gb-metric" style="--accent:#f59e0b">
-            <div class="gb-metric-label">Medium Severity</div>
-            <div class="gb-metric-value">{sev_counts["MEDIUM"]}</div>
-            <div class="gb-metric-sub">Risk score 30–69</div>
-          </div>
-          <div class="gb-metric" style="--accent:#22c55e">
-            <div class="gb-metric-label">Low Severity</div>
-            <div class="gb-metric-value">{sev_counts["LOW"]}</div>
-            <div class="gb-metric-sub">Risk score &lt; 30</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if classified:
-        st.markdown(
-            f"""
-            <div class="gb-metrics-row">
-              <div class="gb-metric" style="--accent:#f87171">
-                <div class="gb-metric-label">Suspicious</div>
-                <div class="gb-metric-value">{class_counts["suspicious"]}</div>
-                <div class="gb-metric-sub">Evidence supports investigation</div>
-              </div>
-              <div class="gb-metric" style="--accent:#fbbf24">
-                <div class="gb-metric-label">Insufficient Evidence</div>
-                <div class="gb-metric-value">{class_counts["insufficient_evidence"]}</div>
-                <div class="gb-metric-sub">Unconfirmed — uncertainty preserved</div>
-              </div>
-              <div class="gb-metric" style="--accent:#4ade80">
-                <div class="gb-metric-label">Normal Activity</div>
-                <div class="gb-metric-value">{class_counts["normal"]}</div>
-                <div class="gb-metric-sub">Expected logins, no severity</div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # Scoring note
-    st.markdown(
-        '<div class="gb-msg-info" style="margin-bottom:1rem">'
-        f"{ICON_INFO}&nbsp;"
-        "<span><strong>How to read this:</strong> risk scores and severity are computed deterministically by "
-        "<code>engine.py</code>, not by AI. "
-        f"{esc(RISK_DISCLAIMER)} "
-        + (
-            "Activity classes (suspicious, insufficient evidence, normal) are also produced by the engine."
-            if classified
-            else "Activity classification (suspicious / insufficient evidence / normal) is not yet provided by "
-            "the engine, so GuardBee does not show one — a low or zero score alone does not prove activity is normal."
-        )
-        + "</span></div>",
-        unsafe_allow_html=True,
-    )
-
-    # Severity distribution
-    st.markdown(
-        f'<div class="gb-section-header">{ICON_LIST}&nbsp; Severity Distribution</div>',
-        unsafe_allow_html=True,
-    )
-
-    for sev_label, count, color in [
-        ("HIGH", sev_counts["HIGH"], "#ef4444"),
-        ("MEDIUM", sev_counts["MEDIUM"], "#f59e0b"),
-        ("LOW", sev_counts["LOW"], "#22c55e"),
-    ]:
-        bar_w = int(count / total * 100) if total else 0
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;font-size:0.82rem">'
-            f'<span style="width:60px;color:{color};font-weight:700">{sev_label}</span>'
-            f'<div style="flex:1;height:10px;background:#1e3a5f;border-radius:5px;overflow:hidden">'
-            f'<div style="width:{bar_w}%;height:100%;background:{color};border-radius:5px"></div></div>'
-            f'<span style="color:#94a3b8;font-family:JetBrains Mono,monospace;font-size:0.78rem">{count}</span>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
-
-    # Recent incidents table
-    st.markdown(
-        f'<div class="gb-section-header">{ICON_CLOCK}&nbsp; Recent Incidents</div>',
-        unsafe_allow_html=True,
-    )
-
-    # Sort incidents by latest event time descending
-    def _latest_dt(inc: dict[str, Any]) -> datetime:
-        times = [_parse_ts(e["time_utc"]) for e in inc.get("events", [])]
-        valid = [t for t in times if t is not None]
-        return max(valid) if valid else datetime.min.replace(tzinfo=timezone.utc)
-
-    sorted_incidents = sorted(incidents, key=_latest_dt, reverse=True)
-
-    # Table header
-    st.markdown(
-        '<div class="gb-table-wrap">'
-        '<div class="gb-table-head" style="grid-template-columns:90px 1fr 140px 100px 100px 130px;gap:0.5rem">'
-        "<span>ID</span><span>Title</span><span>Account</span>"
-        "<span>Severity</span><span>Risk Score</span><span>Latest Event</span>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    for inc in sorted_incidents:
-        a = analyses[inc["id"]]
-        latest = _latest_event_time(inc)
-        sev_html = severity_badge(a.get("severity"))
-        row_html = (
-            f'<div class="gb-table-row" style="grid-template-columns:90px 1fr 140px 100px 100px 130px;gap:0.5rem">'
-            f'<span class="mono">{esc(inc["id"])}</span>'
-            f'<span style="color:#e2e8f0">{esc(inc["title"])}</span>'
-            f'<span class="mono" style="font-size:0.74rem">{esc(inc["account"])}</span>'
-            f'<span>{sev_html}</span>'
-            f'<span style="font-family:JetBrains Mono,monospace;color:#60a5fa">{int(a["risk_score"])}/100</span>'
-            f'<span style="color:#94a3b8;font-size:0.78rem">{esc(latest)}</span>'
-            f"</div>"
-        )
-        # Use a button trigger to navigate
-        st.markdown(row_html, unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Navigate buttons for each incident
-    st.markdown('<div style="margin-top:0.5rem">', unsafe_allow_html=True)
-    for inc in sorted_incidents:
-        a = analyses[inc["id"]]
-        if st.button(
-            f"Open {inc['id']} — {inc['title']}",
-            key=f"dash_open_{inc['id']}",
-            use_container_width=True,
-        ):
-            navigate("detail", inc["id"])
-            st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ===========================================================================
-# VIEW 2 — SECURITY INCIDENTS
-# ===========================================================================
-elif current_view == "incidents":
-    st.markdown(
-        '<div class="gb-topbar">'
-        '<div class="gb-topbar-left">'
-        f'<div class="gb-topbar-title">{ICON_LIST}&nbsp; Security Incidents</div>'
-        '<div class="gb-topbar-sub">Browse and filter the synthetic incident collection</div>'
-        "</div>"
-        f'<div class="gb-topbar-badge">{total} INCIDENTS</div>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    # Filter + Search
-    filter_options = {"All": None, "High": "HIGH", "Medium": "MEDIUM", "Low": "LOW"}
-    if classified:
-        filter_options.update(
-            {"Suspicious": "suspicious", "Insufficient evidence": "insufficient_evidence", "Normal": "normal"}
-        )
-    filter_labels = list(filter_options)
-    saved_filter = st.session_state.get("incident_filter", "All")
-    col_filter, col_search = st.columns([3, 2])
-    with col_filter:
-        filter_choice = st.radio(
-            "Filter",
-            filter_labels,
-            index=filter_labels.index(saved_filter) if saved_filter in filter_labels else 0,
-            horizontal=True,
-            key="inc_filter_radio",
-        )
-        st.session_state.incident_filter = filter_choice
-    with col_search:
-        search_term = st.text_input(
-            "Search",
-            value=st.session_state.get("incident_search", ""),
-            placeholder="Search by ID, title, account, department…",
-            key="inc_search_input",
-            label_visibility="collapsed",
-        )
-        st.session_state.incident_search = search_term
-
-    # Apply filter
-    def _passes_filter(inc: dict[str, Any]) -> bool:
-        a = analyses[inc["id"]]
-        wanted = filter_options[filter_choice]
-        if wanted in sev_counts and a.get("severity") != wanted:
-            return False
-        if wanted in CLASSIFICATION_META and classification_of(a) != wanted:
-            return False
-        if search_term:
-            q = search_term.lower()
-            if not any(
-                q in str(inc.get(f, "")).lower()
-                for f in ("id", "title", "account", "department")
-            ):
-                return False
-        return True
-
-    filtered = [inc for inc in incidents if _passes_filter(inc)]
-
-    st.markdown(
-        f'<div style="font-size:0.78rem;color:#64748b;margin-bottom:0.75rem">'
-        f"Showing {len(filtered)} of {total} incident(s) &nbsp;·&nbsp; {esc(RISK_DISCLAIMER)}"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-    if not filtered:
-        st.markdown(
-            f'<div class="gb-msg-info">{ICON_INFO}&nbsp;'
-            "No incidents match the current filter or search. Clear the search or select a different filter.</div>",
-            unsafe_allow_html=True,
-        )
+    st.title("🐝 GuardBee")
+    st.caption("AI security decision copilot · synthetic demo")
+    page = st.radio("Go to", PAGES, key="page")
+    st.divider()
+    st.markdown("**AI provider**")
+    if read_api_key():
+        st.success("Nebius API key configured", icon="🔑")
     else:
-        # Table header
-        col_widths = "90px 1fr 160px 110px 80px 110px" + (" 150px" if classified else "")
-        st.markdown(
-            f'<div class="gb-table-wrap">'
-            f'<div class="gb-table-head gb-inc-cols" style="grid-template-columns:{col_widths}">'
-            "<span>ID</span><span>Title</span><span>Account</span>"
-            "<span>Department</span><span>Score</span><span>Severity</span>"
-            + ("<span>Classification</span>" if classified else "")
-            + "</div>",
-            unsafe_allow_html=True,
+        st.warning("No Nebius API key configured. AI explanations will show an error.", icon="🔑")
+    st.caption(f"Model: {md(read_model())}")
+    st.caption(f"Simulated decisions this session: {len(st.session_state.audit)}")
+    st.info(
+        "Demo only: synthetic incidents and simulated decisions. GuardBee does not monitor live systems "
+        "or change any account.",
+        icon="🛡️",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Page A - Dashboard
+# ---------------------------------------------------------------------------
+def dashboard_page() -> None:
+    st.title("Dashboard")
+    st.caption(
+        "Overview of the static synthetic dataset in `data/incidents.json`. This is not live monitoring."
+    )
+
+    columns = st.columns(4)
+    columns[0].metric("Valid incidents loaded", len(incidents))
+    if any_classified:
+        for column, key in zip(columns[1:], CLASSIFICATIONS):
+            count = sum(1 for analysis in analyses.values() if classification_of(analysis) == key)
+            column.metric(key.replace("_", " ").title(), count)
+    else:
+        columns[1].metric("Suspicious", "—")
+        columns[2].metric("Insufficient evidence", "—")
+        columns[3].metric("Normal", "—")
+        st.info(
+            "Classification counts are unavailable: `engine.py` does not return a classification yet. "
+            "GuardBee does not infer one from the risk score.",
+            icon="ℹ️",
         )
-        for inc in filtered:
-            a = analyses[inc["id"]]
-            sev_html = severity_badge(a.get("severity"))
-            cls_html = (
-                f"<span>{class_badge(a) if classification_of(a) else '—'}</span>" if classified else ""
-            )
-            st.markdown(
-                f'<div class="gb-table-row gb-inc-cols" style="grid-template-columns:{col_widths}">'
-                f'<span class="mono">{esc(inc["id"])}</span>'
-                f'<span style="color:#e2e8f0;font-weight:500">{esc(inc["title"])}</span>'
-                f'<span class="mono" style="font-size:0.74rem;color:#94a3b8">{esc(inc["account"])}</span>'
-                f'<span style="color:#94a3b8">{esc(inc["department"])}</span>'
-                f'<span style="font-family:JetBrains Mono,monospace;color:#60a5fa">{int(a["risk_score"])}/100</span>'
-                f"<span>{sev_html}</span>"
-                f"{cls_html}"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-        st.markdown("</div>", unsafe_allow_html=True)
 
-        # Open buttons
-        st.markdown('<div style="margin-top:0.5rem">', unsafe_allow_html=True)
-        for inc in filtered:
-            a = analyses[inc["id"]]
-            if st.button(
-                f"Investigate {inc['id']} — {inc['title']}  [Score: {a['risk_score']}/100]",
-                key=f"inc_open_{inc['id']}",
-                use_container_width=True,
-                type="primary" if is_high_risk(a) else "secondary",
-            ):
-                navigate("detail", inc["id"])
-                st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+    severity_columns = st.columns(4)
+    for column, label in zip(severity_columns, ("HIGH", "MEDIUM", "LOW", None)):
+        count = sum(1 for analysis in analyses.values() if analysis.get("severity") == label)
+        column.metric(f"Severity {label.title() if label else NOT_ASSIGNED.lower()}", count)
+    st.caption(RISK_NOTE)
+    st.caption(
+        "Data validation is fail-closed: every record must pass validation or loading stops. "
+        "Partial processing of valid records is not implemented yet."
+    )
+
+    st.subheader("Incident overview")
+    st.dataframe(
+        overview_rows(incidents, analyses),
+        hide_index=True,
+        column_config=OVERVIEW_COLUMNS,
+    )
+    pick, action = st.columns([3, 1], vertical_alignment="bottom")
+    chosen = pick.selectbox(
+        "Open an incident",
+        list(incident_by_id),
+        format_func=lambda identifier: f"{identifier} · {incident_by_id[identifier]['title']}",
+        key="dashboard_pick",
+    )
+    action.button("Open in Security Incidents", key="dashboard_open", on_click=open_incident, args=(chosen,))
 
 
-# ===========================================================================
-# VIEW 3 — INCIDENT DETAIL
-# ===========================================================================
-elif current_view == "detail":
-    iid = st.session_state.selected_incident_id
-    if iid is None or iid not in incident_by_id:
-        st.warning("No incident selected. Please choose one from the Security Incidents list.")
-        if st.button("← Go to Security Incidents"):
-            navigate("incidents")
-            st.rerun()
-        st.stop()
+# ---------------------------------------------------------------------------
+# Page B - Security Incidents
+# ---------------------------------------------------------------------------
+def render_stepper(slot: Any, steps: list[tuple[str, str, str]]) -> None:
+    with slot:
+        for column, (index, (title, state, detail)) in zip(st.columns(len(steps)), enumerate(steps, 1)):
+            column.markdown(f"{STEP_MARKS[state]} **{index} · {title}**")
+            column.caption(detail)
 
-    incident = incident_by_id[iid]
 
-    # Ensure investigation state is bound to this incident
-    if st.session_state.get("active_incident_id") != iid:
-        st.session_state.active_incident_id = iid
-        clear_report_state()
-
-    analysis = analyses[iid]
+def render_incident(incident: dict[str, Any]) -> None:
+    reset_investigation_state(incident["id"])
+    analysis = analyses[incident["id"]]
     query = " ".join(
         [incident["title"], incident["department"], *analysis["flags"], analysis["suggested_action"]]
     )
     matched_policies = retrieve_policies(query, policies)
-    current_ctx = analysis_context_id(incident, analysis, matched_policies)
+    current_context_id = analysis_context_id(incident, analysis, matched_policies)
 
-    sev = analysis.get("severity")
-
-    # Topbar
-    st.markdown(
-        f'<div class="gb-topbar">'
-        f'<div class="gb-topbar-left">'
-        f'<div class="gb-topbar-title">{ICON_DETAIL}&nbsp; Incident Detail</div>'
-        f'<div class="gb-topbar-sub"><span class="mono" style="color:#7dd3fc">{esc(iid)}</span>'
-        f'&nbsp;·&nbsp;{esc(incident["title"])}</div>'
-        f"</div>"
-        f"<div>{severity_badge(sev)}</div>"
-        f"</div>",
-        unsafe_allow_html=True,
+    st.subheader(md(f"{incident['id']} · {incident['title']}"))
+    known_ips = ", ".join(incident.get("known_ips", [])) or "none listed"
+    st.caption(
+        md(f"Account: {incident['account']}  ·  Department: {incident['department']}  ·  Known IPs: {known_ips}")
     )
 
-    # Back button
-    if st.button(f"{ICON_BACK} Back to Security Incidents", key="detail_back"):
-        navigate("incidents")
-        st.rerun()
+    with st.container(border=True):
+        classification = classification_of(analysis)
+        if classification:
+            color, wording = CLASSIFICATIONS[classification]
+            st.markdown(f"**Classification:** :{color}-background[{classification.replace('_', ' ')}]")
+            st.caption(wording)
+        else:
+            st.markdown("**Classification:** :gray-background[NOT CLASSIFIED]")
+            st.caption(
+                "`engine.py` does not provide a classification yet. A low or zero score alone does not "
+                "show that this activity is normal."
+            )
 
-    # ── SECTION A: Incident Overview ─────────────────────────────────────
-    st.markdown(
-        f'<div class="gb-section-header">{ICON_ALERT}&nbsp; A — Incident Overview</div>',
-        unsafe_allow_html=True,
-    )
-    dept = esc(incident["department"])
-    dept_html = (
-        f'<span class="sev-badge sev-high" style="font-size:0.72rem">{ICON_WARN} {dept} (Sensitive)</span>'
-        if incident["department"] == "Finance"
-        else f'<span style="color:#e2e8f0">{dept}</span>'
-    )
-    classification_html = (
-        f'<div><div class="field-label">Classification</div><div style="margin-top:0.15rem">{class_badge(analysis)}</div></div>'
-        if classification_of(analysis)
-        else ""
-    )
-    priority_html = (
-        f'<div><div class="field-label">Investigation Priority</div>'
-        f'<span class="field-value">{esc(analysis["priority"])}</span></div>'
-        if analysis.get("priority")
-        else ""
-    )
-    st.markdown(
-        f'<div class="gb-info-card">'
-        f'<div class="gb-info-fields">'
-        f'<div><div class="field-label">Incident ID</div><span class="mono">{esc(incident["id"])}</span></div>'
-        f'<div><div class="field-label">Title</div><span class="field-value">{esc(incident["title"])}</span></div>'
-        f'<div><div class="field-label">Account</div><span class="mono">{esc(incident["account"])}</span></div>'
-        f'<div><div class="field-label">Department</div>{dept_html}</div>'
-        f'<div><div class="field-label">Risk Score</div>'
-        f'<span style="font-family:JetBrains Mono,monospace;color:#60a5fa;font-weight:700;font-size:1.1rem">'
-        f'{int(analysis["risk_score"])}</span><span style="color:#64748b;font-size:0.8rem">/100</span></div>'
-        f'<div><div class="field-label">Severity</div><div style="margin-top:0.15rem">{severity_badge(sev)}</div></div>'
-        f"{classification_html}{priority_html}"
-        f"</div>"
-        f'<div style="font-size:0.74rem;color:#64748b;margin-top:0.6rem">{ICON_INFO}&nbsp;{esc(RISK_DISCLAIMER)}</div>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+    metrics = st.columns(4)
+    metrics[0].metric("Risk score", f"{analysis['risk_score']} / 100", help=RISK_NOTE)
+    metrics[1].metric("Severity", severity_text(analysis))
+    metrics[2].metric("Investigation priority", priority_text(analysis))
+    metrics[3].metric("Evidence events", len(analysis["evidence_ids"]))
+    st.caption(RISK_NOTE)
 
-    # ── SECTION B: Event Timeline ─────────────────────────────────────────
-    st.markdown(
-        f'<div class="gb-section-header">{ICON_CLOCK}&nbsp; B — Login Event Timeline / Evidence</div>',
-        unsafe_allow_html=True,
-    )
-    render_timeline(incident)
+    stepper = st.container(border=True)
 
-    # ── SECTION C: Deterministic Threat Analysis ──────────────────────────
-    st.markdown(
-        f'<div class="gb-section-header">{ICON_ALERT}&nbsp; C — Deterministic Threat Analysis</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="gb-msg-info" style="margin-bottom:0.85rem">'
-        f"{ICON_INFO}&nbsp;"
-        "<span><strong>Deterministic / rule-based analysis.</strong> "
-        "These results are computed by <code>engine.py</code> using explicit Python rules — "
-        "not by any AI model. Risk scores are fully explainable and repeatable.</span>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    render_rule_hits(analysis)
-    if analysis["evidence_ids"]:
-        evids_html = " &nbsp;·&nbsp; ".join(
-            f'<span class="gb-evid-tag">{esc(eid)}</span>' for eid in analysis["evidence_ids"]
+    # -- Deterministic engine results ---------------------------------------
+    st.subheader("Engine analysis")
+    st.caption("Deterministic rules in `engine.py`. No AI is used to establish these results.")
+    evidence = set(analysis["evidence_ids"])
+    known = set(incident.get("known_ips", []))
+    with st.expander(f"Event timeline · {len(incident['events'])} events, oldest first", expanded=True):
+        st.dataframe(
+            [
+                {
+                    "Event": event["id"],
+                    "Time (UTC)": event["time_utc"],
+                    "Type": event["type"],
+                    "IP": event["ip"],
+                    "IP status": "Known" if event["ip"] in known else "Unfamiliar",
+                    "Country": event.get("country", ""),
+                    "Rule evidence": event["id"] in evidence,
+                }
+                for event in sorted(incident["events"], key=event_time)
+            ],
+            hide_index=True,
+        )
+    with st.expander(f"Triggered rules · {len(analysis['rule_hits'])}", expanded=True):
+        if analysis["rule_hits"]:
+            st.dataframe(
+                [
+                    {
+                        "Rule": hit["rule_id"],
+                        "Finding": hit["flag"],
+                        "Points": hit["points"],
+                        "Evidence events": ", ".join(hit["evidence_ids"]) or "Account context",
+                    }
+                    for hit in analysis["rule_hits"]
+                ],
+                hide_index=True,
+            )
+            total = sum(hit["points"] for hit in analysis["rule_hits"])
+            st.caption(f"Rule points total {total}; the risk score is capped at 100.")
+        else:
+            st.info("No configured rule matched the available events.")
+    with st.expander("Observed facts, interpretation, and unknowns"):
+        events = incident["events"]
+        failed = sum(1 for event in events if event["type"] == "login_failed")
+        unfamiliar = sorted({event["ip"] for event in events if event["ip"] not in known})
+        st.markdown("**Observed in the events**")
+        st.markdown(
+            md(
+                f"{failed} failed and {len(events) - failed} successful login events "
+                f"from {len({event['ip'] for event in events})} IP address(es)."
+            )
         )
         st.markdown(
-            f'<div style="font-size:0.76rem;color:#64748b;margin:-0.2rem 0 0.6rem">All evidence IDs:&nbsp;{evids_html}</div>',
-            unsafe_allow_html=True,
+            md(f"IPs not in the known-IP list: {', '.join(unfamiliar)}.")
+            if unfamiliar
+            else "All events came from known IPs."
         )
-    st.markdown(
-        f'<div class="gb-rule-card" style="border-left-color:#0ea5e9">'
-        f'<div class="field-label" style="font-size:0.67rem;color:#4a7fa5;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem;font-weight:600">Suggested Action</div>'
-        f'<div style="color:#e2e8f0;font-weight:600;font-size:0.88rem">{esc(analysis["suggested_action"])}</div>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+        st.markdown("**Engine interpretation**")
+        for flag in analysis["flags"] or ["No configured rule matched."]:
+            st.markdown(f"- {md(flag)}")
+        st.markdown("**Unknown from this data**")
+        for unknown in UNKNOWNS:
+            st.markdown(f"- {md(unknown)}")
 
-    # ── SECTION D: Retrieved Security Policies ────────────────────────────
-    st.markdown(
-        f'<div class="gb-section-header">{ICON_POLICY}&nbsp; D — Retrieved Security Policies</div>',
-        unsafe_allow_html=True,
+    # -- Policies --------------------------------------------------------------
+    st.subheader("Relevant policies")
+    st.caption(
+        f"Retrieved locally with TF-IDF cosine similarity from `data/policies.json`. "
+        f"Only passages scoring at least {DEFAULT_MIN_SIMILARITY:.2f} are shown."
     )
-    st.markdown(
-        f'<div class="gb-msg-info" style="margin-bottom:0.85rem">'
-        f"{ICON_INFO}&nbsp;"
-        f"<span>Retrieved locally using scikit-learn TF-IDF cosine similarity. "
-        f"Only passages scoring at least <strong>{DEFAULT_MIN_SIMILARITY:.2f}</strong> are shown. "
-        f"These are reference policies for the analyst — they are not instructions for the AI.</span>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-    if not matched_policies:
-        st.markdown(
-            f'<div class="gb-msg-warn">{ICON_WARN}&nbsp;'
-            "No policy passage met the similarity threshold for this incident. "
-            "AI analysis and decision controls are unavailable without valid policy context.</div>",
-            unsafe_allow_html=True,
-        )
+    if matched_policies:
+        for index, policy in enumerate(matched_policies):
+            label = f"{policy['id']} · {policy['title']} · similarity {policy['match_score']:.3f}"
+            with st.expander(md(label), expanded=index == 0):
+                st.markdown(md(policy["text"]))
     else:
-        st.markdown(
-            f'<div class="gb-section-header" style="border:none;padding:0;margin-bottom:0.7rem">'
-            f"{ICON_POLICY}&nbsp;{len(matched_policies)} Policy Passage{'s' if len(matched_policies) != 1 else ''} Retrieved"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-        render_policy_cards(matched_policies)
-
-    # ── SECTION E: Nemotron AI Explanation ───────────────────────────────
-    st.markdown(
-        f'<div class="gb-ai-divider"><span class="gb-ai-label">{ICON_SPARKLE}&nbsp;AI-Generated Analysis (Optional)</span></div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<div class="gb-model-chip">Nebius Token Factory &nbsp;·&nbsp; Model: {esc(read_model())}</div>',
-        unsafe_allow_html=True,
-    )
-
-    if not matched_policies:
-        st.markdown(
-            f'<div class="gb-msg-warn" style="margin-bottom:0.85rem">{ICON_WARN}&nbsp;'
-            "AI explanation is unavailable — no policy context was retrieved for this incident.</div>",
-            unsafe_allow_html=True,
+        st.warning(
+            "No policy passage met the similarity threshold. AI explanation and decisions are unavailable "
+            "without policy context to cite."
         )
 
-    if st.button(
-        "🔍 Request Simplified AI Explanation (NVIDIA Nemotron)",
-        type="primary",
-        disabled=not bool(matched_policies),
-        use_container_width=True,
-        key="ai_request_btn",
-    ):
-        run_ai_analysis(incident, analysis, matched_policies, current_ctx)
+    # -- AI explanation ---------------------------------------------------------
+    st.subheader("AI explanation")
+    with st.container(border=True):
+        st.caption(
+            f"AI-generated · NVIDIA Nemotron via Nebius Token Factory · model {md(read_model())}. "
+            "Separate from the deterministic engine results above."
+        )
+        if st.button(
+            "Generate AI explanation",
+            type="primary",
+            key="ai_request_btn",
+            disabled=not matched_policies,
+        ):
+            run_ai_analysis(incident, analysis, matched_policies, current_context_id)
 
-    if st.session_state.report:
-        st.markdown(
-            f'<div class="gb-msg-success">{ICON_CHECK}&nbsp;{esc(st.session_state.report_status)}</div>',
-            unsafe_allow_html=True,
-        )
-        cited_events, cited_policies = extract_citation_ids(st.session_state.report)
-        policy_titles = {pol["id"].upper(): pol["title"] for pol in matched_policies}
-        events_html = "".join(f'<span class="gb-evid-tag">{esc(eid)}</span>' for eid in cited_events)
-        policies_html = "".join(
-            f'<span class="gb-evid-tag" title="{esc(policy_titles.get(pid, ""))}">{esc(pid)}</span>'
-            for pid in cited_policies
-        )
-        st.markdown(
-            f'<div class="gb-info-card">'
-            f'<div class="field-label">Evidence cited by the AI</div><div>{events_html}</div>'
-            f'<div class="field-label" style="margin-top:0.5rem">Policies cited by the AI</div><div>{policies_html}</div>'
-            f'<div style="font-size:0.74rem;color:#64748b;margin-top:0.5rem">{ICON_INFO}&nbsp;'
-            "Every cited ID was checked against this incident's events and the retrieved policies. "
-            "ID checks do not prove each sentence is correct — read the report as AI-generated interpretation, "
-            "and treat anything under <em>Inferred risk</em> or <em>Unknowns</em> as unconfirmed.</div>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown('<div class="gb-report-box">', unsafe_allow_html=True)
-        st.markdown(st.session_state.report)
-        st.markdown("</div>", unsafe_allow_html=True)
-    elif st.session_state.report_status:
-        st.markdown(
-            f'<div class="gb-msg-error">{ICON_ALERT}&nbsp;AI report unavailable — '
-            f"{esc(st.session_state.report_status)}<br>"
-            f'<span style="font-size:0.78rem;opacity:0.85">No explanation was generated or substituted, and approval remains disabled. '
-            f"Verify the API key, network access, account credits, and configured model name, then retry.</span></div>",
-            unsafe_allow_html=True,
-        )
-        if st.button("↻ Retry AI analysis", key="ai_retry_btn", disabled=not bool(matched_policies)):
-            run_ai_analysis(incident, analysis, matched_policies, current_ctx)
-            st.rerun()
-    else:
-        st.markdown(
-            f'<div class="gb-msg-info" style="margin-top:0.5rem">{ICON_INFO}&nbsp;'
-            "Configure a Nebius API key in <code>.streamlit/secrets.toml</code> and click "
-            "<strong>Request Simplified AI Explanation</strong> to unlock the human decision controls."
-            "</div>",
-            unsafe_allow_html=True,
-        )
+        if st.session_state.report:
+            st.success(md(st.session_state.report_status), icon="✅")
+            cited_events, cited_policies = extract_citation_ids(st.session_state.report)
+            titles = {policy["id"].upper(): policy["title"] for policy in matched_policies}
+            st.markdown("**Cited evidence:** " + " ".join(f"`{event_id}`" for event_id in cited_events))
+            st.markdown(
+                "**Cited policies:** "
+                + "; ".join(f"`{policy_id}` {md(titles.get(policy_id, ''))}" for policy_id in cited_policies)
+            )
+            st.caption(
+                "Each cited ID was checked against this incident's events and the retrieved policies. "
+                "That does not prove every sentence; treat inferred risk and unknowns as unconfirmed."
+            )
+            with st.container(border=True):
+                st.markdown(st.session_state.report)
+        elif st.session_state.report_status:
+            st.error(md(st.session_state.report_status))
+            st.caption(
+                "No explanation was generated or substituted. Check the API key, network access, account "
+                "credits, and configured model, then retry."
+            )
+            if st.button("Retry AI explanation", key="ai_retry_btn", disabled=not matched_policies):
+                run_ai_analysis(incident, analysis, matched_policies, current_context_id)
+                st.rerun()
+        elif matched_policies:
+            st.info("Generate an AI explanation to unlock the simulated decision. A Nebius API key is required.")
 
-    # ── Approve / Reject ──────────────────────────────────────────────────
-    st.markdown(
-        f'<div class="gb-section-header" style="margin-top:1.4rem">{ICON_SCALE}&nbsp; Human Approval Gate — Simulation Only</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<div class="gb-decision-panel">'
-        f'<div class="gb-decision-field-label">Proposed Simulated Action</div>'
-        f'<div class="gb-decision-field-value">{esc(analysis["suggested_action"])}</div>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<div class="gb-sim-note">{ICON_LOCK}&nbsp;'
-        "Simulation only — no real account or security action will be performed.</div>",
-        unsafe_allow_html=True,
-    )
-
+    # -- Simulated decision -----------------------------------------------------------
+    st.subheader("Simulated decision")
     can_decide = can_record_decision(
         st.session_state.report,
         st.session_state.report_context_id,
-        current_ctx,
+        current_context_id,
         st.session_state.active_report_id,
         st.session_state.decision,
     )
-
-    if not can_decide:
-        if st.session_state.decision:
-            st.markdown(
-                f'<div class="gb-gate-used">{ICON_INFO}&nbsp;'
-                "A decision is already recorded for this AI analysis. "
-                "Run a new analysis to enable one new simulated decision.</div>",
-                unsafe_allow_html=True,
+    with st.container(border=True):
+        st.markdown(f"**Proposed simulated action:** {md(analysis['suggested_action'])}")
+        st.caption("Simulation only. GuardBee cannot block accounts, revoke sessions, or change any system.")
+        decision = st.session_state.decision
+        if decision:
+            st.success(
+                md(f"{decision['decision']} recorded at {decision['time_utc']} (UTC): {decision['outcome']}"),
+                icon="📝",
             )
-        else:
-            st.markdown(
-                f'<div class="gb-gate-locked">{ICON_LOCK}&nbsp;'
-                "Approve and Reject unlock only after a current, citation-validated AI report is available. "
-                "Complete the AI analysis step above first.</div>",
-                unsafe_allow_html=True,
+            st.caption("A decision is already recorded for this report. Generate a new explanation to decide again.")
+        elif not st.session_state.report:
+            st.warning("Locked: generate a citation-validated AI explanation first.", icon="🔒")
+        elif not can_decide:
+            st.warning(
+                "Locked: the AI report belongs to a different incident or analysis context. "
+                "Generate a new explanation.",
+                icon="🔒",
             )
-
-    col_approve, col_reject = st.columns(2)
-    with col_approve:
-        if st.button(
-            "✓ Approve",
-            disabled=not can_decide,
-            use_container_width=True,
-            key="btn_approve",
-            type="primary",
+        approve, reject = st.columns(2)
+        for column, label, key, verdict, outcome in (
+            (approve, "Approve (simulated)", "btn_approve", "APPROVED",
+             "Simulated session-revocation response recorded; no external system was changed."),
+            (reject, "Reject (simulated)", "btn_reject", "REJECTED",
+             "No action taken; recommendation rejected by demo analyst."),
         ):
-            ok = audit_decision(
-                incident,
-                "APPROVED",
-                "Simulated session-revocation response recorded; no external system was changed.",
-                current_ctx,
-            )
-            if not ok:
-                st.error("Decision gate rejected the record — the report may be stale. Please re-analyse.")
-            else:
-                st.rerun()
-    with col_reject:
-        if st.button(
-            "✕ Reject",
-            disabled=not can_decide,
-            use_container_width=True,
-            key="btn_reject",
-        ):
-            ok = audit_decision(
-                incident,
-                "REJECTED",
-                "No action taken; recommendation rejected by demo analyst.",
-                current_ctx,
-            )
-            if not ok:
-                st.error("Decision gate rejected the record — the report may be stale. Please re-analyse.")
-            else:
-                st.rerun()
-
-    if st.session_state.decision:
-        d = st.session_state.decision
-        result_cls = "dr-approved" if d["decision"] == "APPROVED" else "dr-rejected"
-        result_icon = "✓" if d["decision"] == "APPROVED" else "✕"
-        st.markdown(
-            f'<div class="gb-decision-result">'
-            f'<div class="dr-label">Simulated Decision Recorded</div>'
-            f'<div class="{result_cls}">{result_icon} {esc(d["decision"])}: {esc(d["outcome"])}</div>'
-            f'<div style="font-size:0.74rem;color:#64748b;margin-top:0.3rem">'
-            f'Report ID: <span class="mono">{esc(d.get("report_id","—"))}</span>'
-            f"</div>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-
-# ===========================================================================
-# VIEW 4 — AUDIT HISTORY
-# ===========================================================================
-elif current_view == "audit":
-    st.markdown(
-        '<div class="gb-topbar">'
-        '<div class="gb-topbar-left">'
-        f'<div class="gb-topbar-title">{ICON_AUDIT}&nbsp; Audit History</div>'
-        '<div class="gb-topbar-sub">Simulated session-only decision audit log</div>'
-        "</div>"
-        f'<div class="gb-topbar-badge">{len(st.session_state.audit)} RECORD(S)</div>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f'<div class="gb-msg-warn" style="margin-bottom:1rem">{ICON_WARN}&nbsp;'
-        "<strong>Demo / simulated audit history.</strong> "
-        "These records exist only in this browser session. "
-        "They are not durable, not cryptographically signed, and not a production-grade immutable log. "
-        "Records reset when the session ends or the page refreshes.</div>",
-        unsafe_allow_html=True,
-    )
-
-    audit_records: list[dict[str, Any]] = st.session_state.audit
-
-    if not audit_records:
-        st.markdown(
-            f'<div class="gb-audit-empty">'
-            f"{ICON_AUDIT}<br><br>"
-            "<strong>No simulated decisions recorded yet.</strong><br>"
-            "Investigate an incident, generate a validated AI explanation, then Approve or Reject."
-            "</div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        # Table
-        col_widths = "170px 90px 110px 90px 60px 1fr"
-        st.markdown(
-            f'<div class="gb-table-wrap">'
-            f'<div class="gb-table-head gb-audit-cols" style="grid-template-columns:{col_widths}">'
-            "<span>Time (UTC)</span><span>Incident</span><span>Actor</span>"
-            "<span>Decision</span><span>Sim?</span><span>Report ID</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-        for rec in reversed(audit_records):
-            dec = rec.get("decision", "—")
-            dec_badge = (
-                '<span class="sev-badge sev-low">✓ APPROVED</span>'
-                if dec == "APPROVED"
-                else '<span class="sev-badge sev-high">✕ REJECTED</span>'
-            )
-            sim_badge = (
-                '<span class="sev-badge sev-info">SIM</span>'
-                if rec.get("simulation_only")
-                else "<span>—</span>"
-            )
-            ts_val = rec.get("time_utc", "—")
-            rid = rec.get("report_id", "—")
-            iid_rec = rec.get("incident_id", "—")
-            st.markdown(
-                f'<div class="gb-table-row gb-audit-cols" style="grid-template-columns:{col_widths}">'
-                f'<span class="mono" style="font-size:0.74rem;color:#94a3b8">{esc(ts_val)}</span>'
-                f'<span class="mono">{esc(iid_rec)}</span>'
-                f'<span style="color:#94a3b8">{esc(rec.get("actor","—"))}</span>'
-                f"<span>{dec_badge}</span>"
-                f"<span>{sim_badge}</span>"
-                f'<span class="mono" style="font-size:0.68rem;color:#4a7fa5;word-break:break-all">{esc(rid)}</span>'
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        # Navigate to incident from audit row
-        st.markdown(
-            f'<div style="margin-top:0.6rem;font-size:0.78rem;color:#64748b;margin-bottom:0.5rem">'
-            "Click a button below to navigate to the corresponding incident:</div>",
-            unsafe_allow_html=True,
-        )
-        seen_ids: set[str] = set()
-        for rec in reversed(audit_records):
-            iid_rec = rec.get("incident_id", "")
-            if iid_rec and iid_rec in incident_by_id and iid_rec not in seen_ids:
-                seen_ids.add(iid_rec)
-                inc = incident_by_id[iid_rec]
-                if st.button(
-                    f"Open {iid_rec} — {inc['title']}",
-                    key=f"audit_open_{iid_rec}",
-                    use_container_width=True,
-                ):
-                    navigate("detail", iid_rec)
+            if column.button(label, key=key, disabled=not can_decide, use_container_width=True):
+                if audit_decision(incident, verdict, outcome, current_context_id):
                     st.rerun()
+                st.error("The decision was not recorded: the report is no longer valid for this context.")
 
-    st.markdown(
-        f'<div style="font-size:0.74rem;color:#4a7fa5;margin-top:1rem">'
-        f"{ICON_INFO}&nbsp;This audit history is in-memory only and resets when the browser session ends or refreshes."
-        f"</div>",
-        unsafe_allow_html=True,
+    if st.session_state.report:
+        ai_step = ("AI explanation", "done", "Citations validated")
+    elif st.session_state.report_status:
+        ai_step = ("AI explanation", "blocked", "Not usable")
+    elif matched_policies:
+        ai_step = ("AI explanation", "active", "Ready to generate")
+    else:
+        ai_step = ("AI explanation", "locked", "Needs policy context")
+    if st.session_state.decision:
+        decision_step = ("Decision", "done", st.session_state.decision["decision"].title())
+    elif can_decide:
+        decision_step = ("Decision", "active", "Awaiting analyst")
+    else:
+        decision_step = ("Decision", "locked", "Needs validated report")
+    render_stepper(
+        stepper,
+        [
+            ("Detect", "done", f"Score {analysis['risk_score']}/100"),
+            ("Evidence", "done", f"{len(analysis['evidence_ids'])} evidence event(s)"),
+            (
+                "Policy",
+                "done" if matched_policies else "blocked",
+                f"{len(matched_policies)} matched" if matched_policies else "No match",
+            ),
+            ai_step,
+            decision_step,
+        ],
     )
+
+
+def incidents_page() -> None:
+    st.title("Security Incidents")
+    st.caption(RISK_NOTE)
+
+    filters = {"All": None, "High": "HIGH", "Medium": "MEDIUM", "Low": "LOW"}
+    if any_classified:
+        filters.update({key.replace("_", " ").title(): key for key in CLASSIFICATIONS})
+    choice = st.radio("Filter", list(filters), horizontal=True, key="incident_filter")
+    wanted = filters[choice]
+    shown = [
+        incident
+        for incident in incidents
+        if wanted is None
+        or analyses[incident["id"]].get("severity") == wanted
+        or classification_of(analyses[incident["id"]]) == wanted
+    ]
+    if not shown:
+        st.info("No incidents match this filter.")
+        return
+    st.dataframe(overview_rows(shown, analyses), hide_index=True, column_config=OVERVIEW_COLUMNS)
+
+    shown_ids = [incident["id"] for incident in shown]
+    if st.session_state.current_incident_id not in shown_ids:
+        st.session_state.current_incident_id = shown_ids[0]
+    st.session_state.incident_picker = st.session_state.current_incident_id
+    selected = st.selectbox(
+        "Investigate incident",
+        shown_ids,
+        format_func=lambda identifier: (
+            f"{identifier} · {incident_by_id[identifier]['title']} · score {analyses[identifier]['risk_score']}"
+        ),
+        key="incident_picker",
+        on_change=sync_incident_picker,
+    )
+    st.divider()
+    render_incident(incident_by_id[selected])
+
+
+# ---------------------------------------------------------------------------
+# Page C - Audit History
+# ---------------------------------------------------------------------------
+def audit_page() -> None:
+    st.title("Audit History")
+    st.warning(
+        "Session-only storage: persistent SQLite audit storage is not implemented yet, so these records "
+        "disappear when the browser session ends or the app restarts.",
+        icon="⚠️",
+    )
+    records = st.session_state.audit
+    if not records:
+        st.info("No simulated decisions have been recorded in this session yet.")
+        return
+    st.dataframe(
+        [
+            {
+                "Time (UTC)": record["time_utc"],
+                "Incident": record["incident_id"],
+                "Decision": record["decision"],
+                "Simulation only": record["simulation_only"],
+                "Actor": record["actor"],
+                "Outcome": record["outcome"],
+                "Report reference": record["report_id"],
+            }
+            for record in reversed(records)
+        ],
+        hide_index=True,
+    )
+    decided = list(dict.fromkeys(record["incident_id"] for record in reversed(records)))
+    pick, action = st.columns([3, 1], vertical_alignment="bottom")
+    chosen = pick.selectbox("Open an incident from the history", decided, key="audit_pick")
+    action.button("Open in Security Incidents", key="audit_open", on_click=open_incident, args=(chosen,))
+
+
+{"Dashboard": dashboard_page, "Security Incidents": incidents_page, "Audit History": audit_page}[page]()
