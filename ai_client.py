@@ -12,6 +12,14 @@ from openai import OpenAI
 BASE_URL = "https://api.tokenfactory.us-central1.nebius.com/v1/"
 DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 
+# Hyphen look-alikes a model may emit; an ID written with one is malformed, not a citation.
+_DASHES = "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"
+# Deliberately broad so disguised IDs (any case, glued prefix, odd dash, underscore) are seen.
+_ID_CANDIDATE = re.compile(
+    rf"(?:EVT|POL)[-{_DASHES}][A-Za-z0-9_]+(?:[-{_DASHES}][A-Za-z0-9_]+)*", re.IGNORECASE
+)
+_WELL_FORMED_ID = re.compile(r"(?:EVT|POL)-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*", re.IGNORECASE)
+
 
 class AIReportError(RuntimeError):
     """Raised when GuardBee cannot obtain a safe, usable live AI report."""
@@ -78,12 +86,26 @@ def validate_report_citations(
     """Require only current incident events and currently retrieved policy IDs."""
     if not report.strip():
         return False, "The model returned an empty report."
-    cited_events = set(re.findall(r"\bEVT-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*\b", report))
-    cited_policies = set(re.findall(r"\bPOL-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*\b", report))
-    allowed_events = set(evidence_ids)
-    allowed_policies = set(policy_ids)
-    unknown_events = sorted(cited_events - allowed_events)
-    unknown_policies = sorted(cited_policies - allowed_policies)
+    allowed = {identifier.upper() for identifier in [*evidence_ids, *policy_ids]}
+    malformed: set[str] = set()
+    unknown: set[str] = set()
+    cited_events: set[str] = set()
+    cited_policies: set[str] = set()
+    for match in _ID_CANDIDATE.finditer(report):
+        start, token = match.start(), match.group()
+        glued = start > 0 and (report[start - 1].isalnum() or report[start - 1] == "_")
+        if glued or not _WELL_FORMED_ID.fullmatch(token):
+            malformed.add(report[max(start - 1, 0) : match.end()] if glued else token)
+        elif token.upper() not in allowed:
+            unknown.add(token)
+        elif token.upper().startswith("EVT-"):
+            cited_events.add(token.upper())
+        else:
+            cited_policies.add(token.upper())
+    if malformed:
+        return False, f"The report contains malformed citation IDs: {', '.join(sorted(malformed))}."
+    unknown_events = sorted(token for token in unknown if token.upper().startswith("EVT-"))
+    unknown_policies = sorted(token for token in unknown if token.upper().startswith("POL-"))
     if unknown_events or unknown_policies:
         unknown = ", ".join(unknown_events + unknown_policies)
         return False, f"The report cited IDs outside the current analysis: {unknown}."

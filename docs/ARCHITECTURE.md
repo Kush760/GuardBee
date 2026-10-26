@@ -21,8 +21,8 @@ flowchart LR
 - `app.py`: creates the dashboard, reads safe configuration, handles invalid-data UI state, coordinates analysis, and shows the session audit.
 - `data_loader.py`: parses and validates JSON before it reaches the application.
 - `engine.py`: creates explainable score, severity, flags, evidence IDs, and suggested action from selected events.
-- `retrieval.py`: ranks policies with TF-IDF and excludes scores below `0.08` by default.
-- `ai_client.py`: builds the guarded provider request and validates current event/policy IDs in a returned report.
+- `retrieval.py`: ranks policies with TF-IDF cosine similarity, returns at most `DEFAULT_TOP_K = 3` passages, and excludes scores below `DEFAULT_MIN_SIMILARITY = 0.08` by default. It never pads results with weaker matches. Ties keep corpus order. Invalid arguments or malformed policy entries raise `TypeError`/`ValueError`. Queries and corpora with no usable terms return no matches.
+- `ai_client.py`: builds the guarded provider request and validates current event/policy IDs in a returned report, rejecting unknown, stale, and malformed (disguised) IDs.
 - `workflow.py`: fingerprints current evidence/policy context and prevents duplicate/conflicting decisions for the same report.
 
 ## State model

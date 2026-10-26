@@ -2,26 +2,63 @@
 
 ## Recorded automated result
 
-The current codebase contains 25 `unittest` test methods. The recorded local verification command is:
+The current codebase contains 54 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
 
 ```powershell
-E:\Hackathon\sentinel-beginner-starter\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Recorded result: **25 tests passed**. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
+Recorded result (Workstream D, `feature/policy-and-ai`): **54 tests passed** on Python 3.12.10 with `openai` 1.109.1 and scikit-learn 1.9.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
+
+All tests are offline. Provider tests use mocks or an in-process `httpx.MockTransport` and never contact Nebius.
 
 ## Test inventory
 
-### `TestReportValidation` (8)
+### `TestReportValidation` (15)
 
 - `test_accepts_report_with_supplied_event_and_policy_citations`
+- `test_accepts_lowercase_form_of_allowed_ids`
 - `test_rejects_fabricated_or_stale_event_ids`
+- `test_rejects_lowercase_fabricated_ids`
+- `test_rejects_ids_glued_to_letter_or_underscore_prefix`
+- `test_rejects_ids_written_with_unicode_dashes`
+- `test_unicode_dash_form_of_allowed_id_does_not_count_as_citation`
+- `test_rejects_ids_with_trailing_underscore_suffix`
+- `test_policy_id_cannot_satisfy_event_requirement`
 - `test_rejects_policy_that_was_not_retrieved`
 - `test_rejects_missing_policy_or_event_citation`
 - `test_rejects_uncited_report`
 - `test_missing_key_is_a_safe_error`
 - `test_provider_failure_is_a_safe_error`
 - `test_empty_or_malformed_provider_response_is_a_safe_error`
+
+### `TestProviderBoundary` (10)
+
+- `test_valid_response_returns_stripped_report`
+- `test_request_uses_documented_endpoint_timeout_and_payload`
+- `test_model_defaults_to_environment_override`
+- `test_timeout_is_a_safe_error`
+- `test_connection_failure_is_a_safe_error`
+- `test_http_errors_are_safe_and_do_not_leak_key`
+- `test_invalid_json_is_a_safe_error`
+- `test_non_json_content_type_is_a_safe_error`
+- `test_unexpected_response_structures_are_safe_errors`
+- `test_missing_or_blank_content_is_a_safe_error`
+
+### `TestPolicyRetrieval` (12)
+
+- `test_documented_defaults`
+- `test_bundled_incidents_retrieve_expected_policy_ids`
+- `test_does_not_pad_results_with_below_threshold_policies`
+- `test_top_k_truncates_ranked_results`
+- `test_non_positive_top_k_returns_nothing`
+- `test_threshold_is_inclusive`
+- `test_whitespace_query_returns_nothing`
+- `test_stop_word_only_corpus_and_query_return_nothing`
+- `test_equal_scores_keep_corpus_order`
+- `test_results_are_deterministic_and_inputs_unchanged`
+- `test_invalid_arguments_are_rejected`
+- `test_malformed_policy_entries_are_rejected`
 
 ### `TestDataValidation` (6)
 
