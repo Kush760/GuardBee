@@ -18,7 +18,7 @@ flowchart LR
 
 ## Module responsibilities
 
-- `app.py`: creates the dashboard, reads safe configuration, handles invalid-data UI state, coordinates analysis, and shows the session audit.
+- `app.py`: renders the Dashboard, Security Incidents (with incident detail), and Audit History views, reads safe configuration, handles invalid-data UI state, coordinates analysis (with an explicit retry after AI failure), and shows the session audit. Every dynamic value is HTML-escaped before it is placed in raw-HTML markup. The UI does not derive activity classes from severity; it displays `analysis["classification"]` (`suspicious`, `insufficient_evidence`, or `normal`) and `analysis["priority"]` only when `engine.py` provides them, which it does not yet.
 - `data_loader.py`: parses and validates JSON before it reaches the application.
 - `engine.py`: creates explainable score, severity, flags, evidence IDs, and suggested action from selected events.
 - `retrieval.py`: ranks policies with TF-IDF cosine similarity, returns at most `DEFAULT_TOP_K = 3` passages, and excludes scores below `DEFAULT_MIN_SIMILARITY = 0.08` by default. It never pads results with weaker matches. Ties keep corpus order. Invalid arguments or malformed policy entries raise `TypeError`/`ValueError`. Queries and corpora with no usable terms return no matches.

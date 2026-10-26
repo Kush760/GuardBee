@@ -2,19 +2,30 @@
 
 ## Recorded automated result
 
-The current codebase contains 54 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
+The current codebase contains 64 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Recorded result (Workstream D, `feature/policy-and-ai`): **54 tests passed** on Python 3.12.10 with `openai` 1.109.1 and scikit-learn 1.9.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
+Recorded result (`dev` branch, Phase A UI work): **64 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
 
-All tests are offline. Provider tests use mocks or an in-process `httpx.MockTransport` and never contact Nebius.
+All tests are offline. Provider tests use mocks or an in-process `httpx.MockTransport` and never contact Nebius. UI tests replace `ai_client.generate_report` with a mock that fails the test if any path tries to reach the provider, even when a local `.streamlit/secrets.toml` exists.
 
 ## Test inventory
 
-### `TestReportValidation` (15)
+### `TestGuardBeeUI` (8) — headless Streamlit `AppTest`
+
+- `test_every_view_renders`
+- `test_open_buttons_reach_detail_and_sidebar_navigation_still_works`
+- `test_low_severity_is_not_labelled_normal`
+- `test_engine_classification_and_priority_are_displayed_when_provided`
+- `test_dynamic_content_is_escaped`
+- `test_validated_report_shows_citations_and_allows_one_decision`
+- `test_invalid_citations_keep_decision_locked`
+- `test_provider_failure_offers_retry_without_fabricating`
+
+### `TestReportValidation` (17)
 
 - `test_accepts_report_with_supplied_event_and_policy_citations`
 - `test_accepts_lowercase_form_of_allowed_ids`
@@ -25,6 +36,8 @@ All tests are offline. Provider tests use mocks or an in-process `httpx.MockTran
 - `test_unicode_dash_form_of_allowed_id_does_not_count_as_citation`
 - `test_rejects_ids_with_trailing_underscore_suffix`
 - `test_policy_id_cannot_satisfy_event_requirement`
+- `test_extract_citation_ids_returns_well_formed_ids_in_order`
+- `test_extract_citation_ids_handles_uncited_report`
 - `test_rejects_policy_that_was_not_retrieved`
 - `test_rejects_missing_policy_or_event_citation`
 - `test_rejects_uncited_report`

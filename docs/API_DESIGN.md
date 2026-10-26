@@ -17,9 +17,11 @@ Never place real values in documentation, code, test fixtures, or tracked config
 
 ## Prompt and validation
 
-The system prompt requires cautious, evidence-only analysis, separates observed facts from potential impact, asks for concise Markdown sections, requires `EVT-*` and `POL-*` citations, and prohibits claiming an action executed. The user message serializes current incident, deterministic analysis, and retrieved policy data.
+The system prompt requires cautious, evidence-only analysis and asks for concise Markdown sections: *Observed facts*, *Inferred risk*, *Unknowns and limitations*, *Policy guidance*, and *Recommended action*. It states that the deterministic risk score is an estimate, not proof of compromise, forbids claiming a confirmed compromise or an executed action, and requires `EVT-*` and `POL-*` citations. Whether a live model follows these sections has not been verified. The user message serializes current incident, deterministic analysis, and retrieved policy data.
 
 The validator rejects empty reports; unknown/stale event IDs; unretrieved policy IDs; and reports without at least one current event ID and one retrieved policy ID. ID comparison is case-insensitive, so `pol-001` counts as a citation of a retrieved `POL-001`, while `evt-999` is rejected as unknown. Disguised IDs are rejected as malformed even when the rest matches an allowed ID: IDs written with a Unicode dash (for example `EVT‑006`), IDs glued to a preceding letter, digit, or underscore (`xPOL-009`, `_EVT-006`, which includes Markdown `_italic_` IDs), and IDs containing underscores (`EVT-999_x`). It only proves ID membership, not the semantic correctness of each sentence. IDs written with spaces (`EVT 999`) are not recognized as citations.
+
+`extract_citation_ids(report)` returns the well-formed `EVT-*` and `POL-*` IDs a report cites (uppercased, first-cited order). It shares its ID scanning with the validator. The UI uses it to show which evidence and policies a validated report cited.
 
 ## Error behavior and status
 

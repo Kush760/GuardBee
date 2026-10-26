@@ -7,11 +7,14 @@ Four-view Wazuh-inspired security dashboard:
   View 4 – Audit History  (Simulated session-only decision audit log)
 
 Backend contracts (engine.py, retrieval.py, ai_client.py, data_loader.py,
-workflow.py) are NOT modified.  All UI state is managed in st.session_state.
+workflow.py) are consumed, not re-implemented.  All UI state is managed in
+st.session_state.  Every dynamic value is HTML-escaped before it is placed in
+raw-HTML markup.
 """
 
 from __future__ import annotations
 
+import html
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,7 +22,13 @@ from typing import Any
 
 import streamlit as st
 
-from ai_client import AIReportError, configured_model, generate_report, validate_report_citations
+from ai_client import (
+    AIReportError,
+    configured_model,
+    extract_citation_ids,
+    generate_report,
+    validate_report_citations,
+)
 from data_loader import DataValidationError, load_incidents, load_policies
 from engine import analyze_incident
 from retrieval import DEFAULT_MIN_SIMILARITY, retrieve_policies
@@ -608,21 +617,41 @@ ICON_CLOCK    = _icon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12
 # ---------------------------------------------------------------------------
 # Severity badge HTML
 # ---------------------------------------------------------------------------
-def severity_badge(severity: str) -> str:
+def esc(value: Any) -> str:
+    """Escape any dynamic value before it is placed in raw-HTML markup."""
+    return html.escape(str(value))
+
+
+def severity_badge(severity: str | None) -> str:
     meta = {
         "HIGH":   ("sev-high",   "●", "HIGH RISK"),
         "MEDIUM": ("sev-medium", "●", "MEDIUM RISK"),
         "LOW":    ("sev-low",    "●", "LOW RISK"),
     }
-    cls, dot, label = meta.get(severity, ("sev-info", "●", severity))
+    if severity is None:
+        return '<span class="sev-badge sev-info">NO SEVERITY</span>'
+    cls, dot, label = meta.get(severity, ("sev-info", "●", esc(severity)))
     return f'<span class="sev-badge {cls}">{dot} {label}</span>'
 
 
-def class_badge(severity: str) -> str:
-    """Suspicious / Normal classification badge derived from severity."""
-    if severity == "LOW":
-        return '<span class="sev-badge sev-low">● NORMAL</span>'
-    return '<span class="sev-badge sev-high">● SUSPICIOUS</span>'
+# Activity classes are produced by engine.py. The UI never derives them from
+# severity: a LOW or zero score does not prove that activity is normal.
+CLASSIFICATION_META = {
+    "suspicious":            ("sev-high",   "SUSPICIOUS"),
+    "insufficient_evidence": ("sev-medium", "INSUFFICIENT EVIDENCE"),
+    "normal":                ("sev-low",    "NORMAL ACTIVITY"),
+}
+
+
+def classification_of(analysis: dict[str, Any]) -> str | None:
+    """Return the engine-provided activity class, or None if the engine gives none."""
+    value = analysis.get("classification")
+    return value if value in CLASSIFICATION_META else None
+
+
+def class_badge(analysis: dict[str, Any]) -> str:
+    cls, label = CLASSIFICATION_META[classification_of(analysis)]
+    return f'<span class="sev-badge {cls}">● {label}</span>'
 
 
 # ---------------------------------------------------------------------------
@@ -650,20 +679,14 @@ def _latest_event_time(incident: dict[str, Any]) -> str:
     return _fmt_ts(max(valid))
 
 
-# ---------------------------------------------------------------------------
-# Classification helper (transparent mapping from engine severity)
-# Suspicious = severity HIGH or MEDIUM (risk_score >= 30)
-# Normal     = severity LOW           (risk_score < 30)
-# High-Risk  = severity HIGH          (risk_score >= 70)
-# These thresholds are NOT invented here; they mirror exactly what engine.py
-# returns via its `severity` field.
-# ---------------------------------------------------------------------------
-def is_suspicious(analysis: dict[str, Any]) -> bool:
-    return analysis["severity"] in {"HIGH", "MEDIUM"}
-
-
 def is_high_risk(analysis: dict[str, Any]) -> bool:
-    return analysis["severity"] == "HIGH"
+    return analysis.get("severity") == "HIGH"
+
+
+RISK_DISCLAIMER = (
+    "Risk score and severity estimate investigation risk from synthetic evidence. "
+    "HIGH risk is not proof of compromise."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -735,6 +758,38 @@ def audit_decision(
     return True
 
 
+def run_ai_analysis(
+    incident: dict[str, Any],
+    analysis: dict[str, Any],
+    matched_policies: list[dict[str, Any]],
+    current_ctx: str,
+) -> None:
+    """Request a report and keep it only if its citations validate; never fabricate one."""
+    clear_report_state()
+    try:
+        with st.spinner("Calling Nebius Token Factory — GuardBee does not fabricate AI reports…"):
+            report = generate_report(
+                read_api_key(), incident, analysis, matched_policies, model=read_model()
+            )
+        usable, reason = validate_report_citations(
+            report,
+            [event["id"] for event in incident["events"]],
+            [pol["id"] for pol in matched_policies],
+        )
+        if not usable:
+            st.session_state.report_status = reason
+        else:
+            st.session_state.report = report
+            st.session_state.report_status = reason
+            st.session_state.report_context_id = current_ctx
+            st.session_state.report_sequence += 1
+            st.session_state.active_report_id = (
+                f"{current_ctx}:{st.session_state.report_sequence}"
+            )
+    except AIReportError as exc:
+        st.session_state.report_status = str(exc)
+
+
 # ---------------------------------------------------------------------------
 # Boot: load data
 # ---------------------------------------------------------------------------
@@ -782,41 +837,49 @@ with st.sidebar:
     nav_labels = list(nav_options.values())
     nav_keys   = list(nav_options.keys())
 
-    # Map current view to label index (detail → incidents)
+    # Keep the radio in sync with programmatic navigation (detail → incidents),
+    # and navigate only when the user changes it. Comparing the radio value with
+    # the view on every run would bounce the user out of the detail view.
     cur_view = st.session_state.view
-    if cur_view not in nav_keys:
-        cur_view = "incidents"
-    cur_idx = nav_keys.index(cur_view)
+    st.session_state.nav_radio = nav_options[cur_view if cur_view in nav_keys else "incidents"]
 
-    chosen_label = st.radio(
+    def _on_nav_change() -> None:
+        navigate(nav_keys[nav_labels.index(st.session_state.nav_radio)])
+
+    st.radio(
         "Navigation",
         nav_labels,
-        index=cur_idx,
         label_visibility="collapsed",
         key="nav_radio",
+        on_change=_on_nav_change,
     )
-    chosen_key = nav_keys[nav_labels.index(chosen_label)]
-    if chosen_key != st.session_state.view:
-        # Only navigate if not going into 'detail' from radio (detail is internal)
-        navigate(chosen_key)
-        st.rerun()
 
     # Quick-stats
     total = len(incidents)
-    susp  = sum(1 for iid in incident_by_id if is_suspicious(analyses[iid]))
-    norm  = total - susp
-    high  = sum(1 for iid in incident_by_id if is_high_risk(analyses[iid]))
+    sev_counts: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    class_counts: dict[str, int] = {key: 0 for key in CLASSIFICATION_META}
+    for a in analyses.values():
+        if a.get("severity") in sev_counts:
+            sev_counts[a["severity"]] += 1
+        if classification_of(a):
+            class_counts[classification_of(a)] += 1
+    classified = sum(class_counts.values())
 
     st.markdown('<div class="gb-sidebar-section">Quick Stats</div>', unsafe_allow_html=True)
+    class_line = (
+        f'<br><span style="color:#f87171;font-weight:700">{class_counts["suspicious"]}</span> Suspicious &nbsp;·&nbsp;'
+        f'<span style="color:#fbbf24;font-weight:700">{class_counts["insufficient_evidence"]}</span> Insufficient &nbsp;·&nbsp;'
+        f'<span style="color:#4ade80;font-weight:700">{class_counts["normal"]}</span> Normal'
+        if classified
+        else ""
+    )
     st.markdown(
-        f"""
-        <div style="font-size:0.8rem;color:#94a3b8;line-height:2;">
-          <span style="color:#f87171;font-weight:700">{high}</span> High-Risk &nbsp;·&nbsp;
-          <span style="color:#fbbf24;font-weight:700">{susp}</span> Suspicious<br>
-          <span style="color:#4ade80;font-weight:700">{norm}</span> Normal &nbsp;·&nbsp;
-          <span style="color:#60a5fa;font-weight:700">{total}</span> Total
-        </div>
-        """,
+        '<div style="font-size:0.8rem;color:#94a3b8;line-height:2;">'
+        f'<span style="color:#f87171;font-weight:700">{sev_counts["HIGH"]}</span> High &nbsp;·&nbsp;'
+        f'<span style="color:#fbbf24;font-weight:700">{sev_counts["MEDIUM"]}</span> Medium &nbsp;·&nbsp;'
+        f'<span style="color:#4ade80;font-weight:700">{sev_counts["LOW"]}</span> Low &nbsp;·&nbsp;'
+        f'<span style="color:#60a5fa;font-weight:700">{total}</span> Total'
+        f"{class_line}</div>",
         unsafe_allow_html=True,
     )
 
@@ -887,21 +950,21 @@ def render_timeline(incident: dict[str, Any]) -> None:
         type_cls = "evt-fail" if is_fail else "evt-success"
         type_lbl = ("✕ login_failed" if is_fail else "✓ login_success")
         ip_cls = "evt-ip-unfamiliar" if is_unfamiliar else "evt-ip-known"
-        ip_lbl = evt["ip"] + (" ⚑" if is_unfamiliar else "")
+        ip_lbl = esc(evt["ip"]) + (" ⚑" if is_unfamiliar else "")
         rows_html += (
             f'<div class="gb-table-row gb-timeline-cols">'
-            f'<span class="mono">{evt["id"]}</span>'
-            f'<span class="mono" style="color:#94a3b8">{ts_fmt}</span>'
+            f'<span class="mono">{esc(evt["id"])}</span>'
+            f'<span class="mono" style="color:#94a3b8">{esc(ts_fmt)}</span>'
             f'<span class="{type_cls}">{type_lbl}</span>'
             f'<span class="{ip_cls}">{ip_lbl}</span>'
-            f'<span style="color:#94a3b8">{evt["country"]}</span>'
+            f'<span style="color:#94a3b8">{esc(evt["country"])}</span>'
             f"</div>"
         )
     st.markdown(header_html + rows_html + "</div>", unsafe_allow_html=True)
     if known_ips:
         st.markdown(
             f'<div style="font-size:0.73rem;color:#64748b;margin-top:0.3rem">'
-            f"⚑ Unfamiliar IP (not in known IPs: {', '.join(sorted(known_ips))})"
+            f"⚑ Unfamiliar IP (not in known IPs: {esc(', '.join(sorted(known_ips)))})"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -919,14 +982,14 @@ def render_rule_hits(analysis: dict[str, Any]) -> None:
         return
     for hit in analysis["rule_hits"]:
         evids_html = "".join(
-            f'<span class="gb-evid-tag">{eid}</span>' for eid in hit.get("evidence_ids", [])
+            f'<span class="gb-evid-tag">{esc(eid)}</span>' for eid in hit.get("evidence_ids", [])
         ) or "<span style='color:#64748b;font-size:0.75rem'>No linked event IDs</span>"
         border_color = "#ef4444" if hit["points"] >= 30 else "#f59e0b" if hit["points"] >= 10 else "#3b82f6"
         st.markdown(
             f'<div class="gb-rule-card" style="border-left-color:{border_color}">'
-            f'<div class="gb-rule-id">{hit["rule_id"]}</div>'
-            f'<div class="gb-rule-flag">{hit["flag"]}</div>'
-            f'<div class="gb-rule-pts">+{hit["points"]} risk points</div>'
+            f'<div class="gb-rule-id">{esc(hit["rule_id"])}</div>'
+            f'<div class="gb-rule-flag">{esc(hit["flag"])}</div>'
+            f'<div class="gb-rule-pts">+{int(hit["points"])} risk points</div>'
             f'<div class="gb-rule-evids">{evids_html}</div>'
             f"</div>",
             unsafe_allow_html=True,
@@ -938,18 +1001,18 @@ def render_rule_hits(analysis: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 def render_policy_cards(matched_policies: list[dict[str, Any]]) -> None:
     for pol in matched_policies:
-        score = pol["match_score"]
+        score = float(pol["match_score"])
         bar_pct = min(int(score / 0.5 * 100), 100)
         st.markdown(
             f'<div class="gb-policy-card">'
-            f'<div class="gb-policy-id">{pol["id"]}</div>'
-            f'<div class="gb-policy-title">{pol["title"]}</div>'
+            f'<div class="gb-policy-id">{esc(pol["id"])}</div>'
+            f'<div class="gb-policy-title">{esc(pol["title"])}</div>'
             f'<div class="gb-policy-sim-row">'
             f'<span class="gb-policy-sim-label">TF-IDF similarity</span>'
             f'<div class="gb-policy-sim-bar"><div class="gb-policy-sim-fill" style="width:{bar_pct}%"></div></div>'
             f'<span class="gb-policy-sim-pct">{score:.3f}</span>'
             f"</div>"
-            f'<div class="gb-policy-text">{pol["text"]}</div>'
+            f'<div class="gb-policy-text">{esc(pol["text"])}</div>'
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -979,35 +1042,64 @@ if current_view == "dashboard":
             <div class="gb-metric-value">{total}</div>
             <div class="gb-metric-sub">Synthetic dataset</div>
           </div>
-          <div class="gb-metric" style="--accent:#f87171">
-            <div class="gb-metric-label">Suspicious</div>
-            <div class="gb-metric-value">{susp}</div>
-            <div class="gb-metric-sub">Severity HIGH or MEDIUM</div>
-          </div>
-          <div class="gb-metric" style="--accent:#4ade80">
-            <div class="gb-metric-label">Normal</div>
-            <div class="gb-metric-value">{norm}</div>
-            <div class="gb-metric-sub">Severity LOW</div>
-          </div>
           <div class="gb-metric" style="--accent:#ef4444">
-            <div class="gb-metric-label">High-Risk</div>
-            <div class="gb-metric-value">{high}</div>
-            <div class="gb-metric-sub">Severity HIGH (score ≥ 70)</div>
+            <div class="gb-metric-label">High Severity</div>
+            <div class="gb-metric-value">{sev_counts["HIGH"]}</div>
+            <div class="gb-metric-sub">Risk score ≥ 70</div>
+          </div>
+          <div class="gb-metric" style="--accent:#f59e0b">
+            <div class="gb-metric-label">Medium Severity</div>
+            <div class="gb-metric-value">{sev_counts["MEDIUM"]}</div>
+            <div class="gb-metric-sub">Risk score 30–69</div>
+          </div>
+          <div class="gb-metric" style="--accent:#22c55e">
+            <div class="gb-metric-label">Low Severity</div>
+            <div class="gb-metric-value">{sev_counts["LOW"]}</div>
+            <div class="gb-metric-sub">Risk score &lt; 30</div>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # Classification note
+    if classified:
+        st.markdown(
+            f"""
+            <div class="gb-metrics-row">
+              <div class="gb-metric" style="--accent:#f87171">
+                <div class="gb-metric-label">Suspicious</div>
+                <div class="gb-metric-value">{class_counts["suspicious"]}</div>
+                <div class="gb-metric-sub">Evidence supports investigation</div>
+              </div>
+              <div class="gb-metric" style="--accent:#fbbf24">
+                <div class="gb-metric-label">Insufficient Evidence</div>
+                <div class="gb-metric-value">{class_counts["insufficient_evidence"]}</div>
+                <div class="gb-metric-sub">Unconfirmed — uncertainty preserved</div>
+              </div>
+              <div class="gb-metric" style="--accent:#4ade80">
+                <div class="gb-metric-label">Normal Activity</div>
+                <div class="gb-metric-value">{class_counts["normal"]}</div>
+                <div class="gb-metric-sub">Expected logins, no severity</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # Scoring note
     st.markdown(
         '<div class="gb-msg-info" style="margin-bottom:1rem">'
         f"{ICON_INFO}&nbsp;"
-        "<span><strong>Classification rule:</strong> Suspicious = engine severity HIGH or MEDIUM (risk score ≥ 30). "
-        "Normal = severity LOW (risk score &lt; 30). "
-        "High-Risk = severity HIGH (risk score ≥ 70). "
-        "Thresholds are computed deterministically by <code>engine.py</code> — not by AI.</span>"
-        "</div>",
+        "<span><strong>How to read this:</strong> risk scores and severity are computed deterministically by "
+        "<code>engine.py</code>, not by AI. "
+        f"{esc(RISK_DISCLAIMER)} "
+        + (
+            "Activity classes (suspicious, insufficient evidence, normal) are also produced by the engine."
+            if classified
+            else "Activity classification (suspicious / insufficient evidence / normal) is not yet provided by "
+            "the engine, so GuardBee does not show one — a low or zero score alone does not prove activity is normal."
+        )
+        + "</span></div>",
         unsafe_allow_html=True,
     )
 
@@ -1016,9 +1108,6 @@ if current_view == "dashboard":
         f'<div class="gb-section-header">{ICON_LIST}&nbsp; Severity Distribution</div>',
         unsafe_allow_html=True,
     )
-    sev_counts: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
-    for iid in incident_by_id:
-        sev_counts[analyses[iid]["severity"]] += 1
 
     for sev_label, count, color in [
         ("HIGH", sev_counts["HIGH"], "#ef4444"),
@@ -1064,15 +1153,15 @@ if current_view == "dashboard":
     for inc in sorted_incidents:
         a = analyses[inc["id"]]
         latest = _latest_event_time(inc)
-        sev_html = severity_badge(a["severity"])
+        sev_html = severity_badge(a.get("severity"))
         row_html = (
             f'<div class="gb-table-row" style="grid-template-columns:90px 1fr 140px 100px 100px 130px;gap:0.5rem">'
-            f'<span class="mono">{inc["id"]}</span>'
-            f'<span style="color:#e2e8f0">{inc["title"]}</span>'
-            f'<span class="mono" style="font-size:0.74rem">{inc["account"]}</span>'
+            f'<span class="mono">{esc(inc["id"])}</span>'
+            f'<span style="color:#e2e8f0">{esc(inc["title"])}</span>'
+            f'<span class="mono" style="font-size:0.74rem">{esc(inc["account"])}</span>'
             f'<span>{sev_html}</span>'
-            f'<span style="font-family:JetBrains Mono,monospace;color:#60a5fa">{a["risk_score"]}/100</span>'
-            f'<span style="color:#94a3b8;font-size:0.78rem">{latest}</span>'
+            f'<span style="font-family:JetBrains Mono,monospace;color:#60a5fa">{int(a["risk_score"])}/100</span>'
+            f'<span style="color:#94a3b8;font-size:0.78rem">{esc(latest)}</span>'
             f"</div>"
         )
         # Use a button trigger to navigate
@@ -1110,14 +1199,19 @@ elif current_view == "incidents":
     )
 
     # Filter + Search
-    col_filter, col_search = st.columns([2, 3])
+    filter_options = {"All": None, "High": "HIGH", "Medium": "MEDIUM", "Low": "LOW"}
+    if classified:
+        filter_options.update(
+            {"Suspicious": "suspicious", "Insufficient evidence": "insufficient_evidence", "Normal": "normal"}
+        )
+    filter_labels = list(filter_options)
+    saved_filter = st.session_state.get("incident_filter", "All")
+    col_filter, col_search = st.columns([3, 2])
     with col_filter:
         filter_choice = st.radio(
             "Filter",
-            ["All", "Suspicious", "Normal"],
-            index=["All", "Suspicious", "Normal"].index(
-                st.session_state.get("incident_filter", "All")
-            ),
+            filter_labels,
+            index=filter_labels.index(saved_filter) if saved_filter in filter_labels else 0,
             horizontal=True,
             key="inc_filter_radio",
         )
@@ -1135,9 +1229,10 @@ elif current_view == "incidents":
     # Apply filter
     def _passes_filter(inc: dict[str, Any]) -> bool:
         a = analyses[inc["id"]]
-        if filter_choice == "Suspicious" and not is_suspicious(a):
+        wanted = filter_options[filter_choice]
+        if wanted in sev_counts and a.get("severity") != wanted:
             return False
-        if filter_choice == "Normal" and is_suspicious(a):
+        if wanted in CLASSIFICATION_META and classification_of(a) != wanted:
             return False
         if search_term:
             q = search_term.lower()
@@ -1152,7 +1247,7 @@ elif current_view == "incidents":
 
     st.markdown(
         f'<div style="font-size:0.78rem;color:#64748b;margin-bottom:0.75rem">'
-        f"Showing {len(filtered)} of {total} incident(s)"
+        f"Showing {len(filtered)} of {total} incident(s) &nbsp;·&nbsp; {esc(RISK_DISCLAIMER)}"
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -1165,28 +1260,31 @@ elif current_view == "incidents":
         )
     else:
         # Table header
-        col_widths = "90px 1fr 160px 110px 80px 110px 130px"
+        col_widths = "90px 1fr 160px 110px 80px 110px" + (" 150px" if classified else "")
         st.markdown(
             f'<div class="gb-table-wrap">'
             f'<div class="gb-table-head gb-inc-cols" style="grid-template-columns:{col_widths}">'
             "<span>ID</span><span>Title</span><span>Account</span>"
-            "<span>Department</span><span>Score</span><span>Severity</span><span>Classification</span>"
-            "</div>",
+            "<span>Department</span><span>Score</span><span>Severity</span>"
+            + ("<span>Classification</span>" if classified else "")
+            + "</div>",
             unsafe_allow_html=True,
         )
         for inc in filtered:
             a = analyses[inc["id"]]
-            sev_html = severity_badge(a["severity"])
-            cls_html = class_badge(a["severity"])
+            sev_html = severity_badge(a.get("severity"))
+            cls_html = (
+                f"<span>{class_badge(a) if classification_of(a) else '—'}</span>" if classified else ""
+            )
             st.markdown(
                 f'<div class="gb-table-row gb-inc-cols" style="grid-template-columns:{col_widths}">'
-                f'<span class="mono">{inc["id"]}</span>'
-                f'<span style="color:#e2e8f0;font-weight:500">{inc["title"]}</span>'
-                f'<span class="mono" style="font-size:0.74rem;color:#94a3b8">{inc["account"]}</span>'
-                f'<span style="color:#94a3b8">{inc["department"]}</span>'
-                f'<span style="font-family:JetBrains Mono,monospace;color:#60a5fa">{a["risk_score"]}/100</span>'
+                f'<span class="mono">{esc(inc["id"])}</span>'
+                f'<span style="color:#e2e8f0;font-weight:500">{esc(inc["title"])}</span>'
+                f'<span class="mono" style="font-size:0.74rem;color:#94a3b8">{esc(inc["account"])}</span>'
+                f'<span style="color:#94a3b8">{esc(inc["department"])}</span>'
+                f'<span style="font-family:JetBrains Mono,monospace;color:#60a5fa">{int(a["risk_score"])}/100</span>'
                 f"<span>{sev_html}</span>"
-                f"<span>{cls_html}</span>"
+                f"{cls_html}"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -1233,15 +1331,15 @@ elif current_view == "detail":
     matched_policies = retrieve_policies(query, policies)
     current_ctx = analysis_context_id(incident, analysis, matched_policies)
 
-    sev = analysis["severity"]
+    sev = analysis.get("severity")
 
     # Topbar
     st.markdown(
         f'<div class="gb-topbar">'
         f'<div class="gb-topbar-left">'
         f'<div class="gb-topbar-title">{ICON_DETAIL}&nbsp; Incident Detail</div>'
-        f'<div class="gb-topbar-sub"><span class="mono" style="color:#7dd3fc">{iid}</span>'
-        f'&nbsp;·&nbsp;{incident["title"]}</div>'
+        f'<div class="gb-topbar-sub"><span class="mono" style="color:#7dd3fc">{esc(iid)}</span>'
+        f'&nbsp;·&nbsp;{esc(incident["title"])}</div>'
         f"</div>"
         f"<div>{severity_badge(sev)}</div>"
         f"</div>",
@@ -1258,25 +1356,37 @@ elif current_view == "detail":
         f'<div class="gb-section-header">{ICON_ALERT}&nbsp; A — Incident Overview</div>',
         unsafe_allow_html=True,
     )
-    dept = incident["department"]
+    dept = esc(incident["department"])
     dept_html = (
         f'<span class="sev-badge sev-high" style="font-size:0.72rem">{ICON_WARN} {dept} (Sensitive)</span>'
-        if dept == "Finance"
+        if incident["department"] == "Finance"
         else f'<span style="color:#e2e8f0">{dept}</span>'
+    )
+    classification_html = (
+        f'<div><div class="field-label">Classification</div><div style="margin-top:0.15rem">{class_badge(analysis)}</div></div>'
+        if classification_of(analysis)
+        else ""
+    )
+    priority_html = (
+        f'<div><div class="field-label">Investigation Priority</div>'
+        f'<span class="field-value">{esc(analysis["priority"])}</span></div>'
+        if analysis.get("priority")
+        else ""
     )
     st.markdown(
         f'<div class="gb-info-card">'
         f'<div class="gb-info-fields">'
-        f'<div><div class="field-label">Incident ID</div><span class="mono">{incident["id"]}</span></div>'
-        f'<div><div class="field-label">Title</div><span class="field-value">{incident["title"]}</span></div>'
-        f'<div><div class="field-label">Account</div><span class="mono">{incident["account"]}</span></div>'
+        f'<div><div class="field-label">Incident ID</div><span class="mono">{esc(incident["id"])}</span></div>'
+        f'<div><div class="field-label">Title</div><span class="field-value">{esc(incident["title"])}</span></div>'
+        f'<div><div class="field-label">Account</div><span class="mono">{esc(incident["account"])}</span></div>'
         f'<div><div class="field-label">Department</div>{dept_html}</div>'
         f'<div><div class="field-label">Risk Score</div>'
         f'<span style="font-family:JetBrains Mono,monospace;color:#60a5fa;font-weight:700;font-size:1.1rem">'
-        f'{analysis["risk_score"]}</span><span style="color:#64748b;font-size:0.8rem">/100</span></div>'
+        f'{int(analysis["risk_score"])}</span><span style="color:#64748b;font-size:0.8rem">/100</span></div>'
         f'<div><div class="field-label">Severity</div><div style="margin-top:0.15rem">{severity_badge(sev)}</div></div>'
-        f'<div><div class="field-label">Classification</div><div style="margin-top:0.15rem">{class_badge(sev)}</div></div>'
+        f"{classification_html}{priority_html}"
         f"</div>"
+        f'<div style="font-size:0.74rem;color:#64748b;margin-top:0.6rem">{ICON_INFO}&nbsp;{esc(RISK_DISCLAIMER)}</div>'
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -1305,7 +1415,7 @@ elif current_view == "detail":
     render_rule_hits(analysis)
     if analysis["evidence_ids"]:
         evids_html = " &nbsp;·&nbsp; ".join(
-            f'<span class="gb-evid-tag">{eid}</span>' for eid in analysis["evidence_ids"]
+            f'<span class="gb-evid-tag">{esc(eid)}</span>' for eid in analysis["evidence_ids"]
         )
         st.markdown(
             f'<div style="font-size:0.76rem;color:#64748b;margin:-0.2rem 0 0.6rem">All evidence IDs:&nbsp;{evids_html}</div>',
@@ -1314,7 +1424,7 @@ elif current_view == "detail":
     st.markdown(
         f'<div class="gb-rule-card" style="border-left-color:#0ea5e9">'
         f'<div class="field-label" style="font-size:0.67rem;color:#4a7fa5;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem;font-weight:600">Suggested Action</div>'
-        f'<div style="color:#e2e8f0;font-weight:600;font-size:0.88rem">{analysis["suggested_action"]}</div>'
+        f'<div style="color:#e2e8f0;font-weight:600;font-size:0.88rem">{esc(analysis["suggested_action"])}</div>'
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -1355,7 +1465,7 @@ elif current_view == "detail":
         unsafe_allow_html=True,
     )
     st.markdown(
-        f'<div class="gb-model-chip">Nebius Token Factory &nbsp;·&nbsp; Model: {read_model()}</div>',
+        f'<div class="gb-model-chip">Nebius Token Factory &nbsp;·&nbsp; Model: {esc(read_model())}</div>',
         unsafe_allow_html=True,
     )
 
@@ -1373,33 +1483,29 @@ elif current_view == "detail":
         use_container_width=True,
         key="ai_request_btn",
     ):
-        clear_report_state()
-        try:
-            with st.spinner("Calling Nebius Token Factory — GuardBee does not fabricate AI reports…"):
-                report = generate_report(
-                    read_api_key(), incident, analysis, matched_policies, model=read_model()
-                )
-            usable, reason = validate_report_citations(
-                report,
-                [event["id"] for event in incident["events"]],
-                [pol["id"] for pol in matched_policies],
-            )
-            if not usable:
-                st.session_state.report_status = reason
-            else:
-                st.session_state.report = report
-                st.session_state.report_status = reason
-                st.session_state.report_context_id = current_ctx
-                st.session_state.report_sequence += 1
-                st.session_state.active_report_id = (
-                    f"{current_ctx}:{st.session_state.report_sequence}"
-                )
-        except AIReportError as exc:
-            st.session_state.report_status = str(exc)
+        run_ai_analysis(incident, analysis, matched_policies, current_ctx)
 
     if st.session_state.report:
         st.markdown(
-            f'<div class="gb-msg-success">{ICON_CHECK}&nbsp;{st.session_state.report_status}</div>',
+            f'<div class="gb-msg-success">{ICON_CHECK}&nbsp;{esc(st.session_state.report_status)}</div>',
+            unsafe_allow_html=True,
+        )
+        cited_events, cited_policies = extract_citation_ids(st.session_state.report)
+        policy_titles = {pol["id"].upper(): pol["title"] for pol in matched_policies}
+        events_html = "".join(f'<span class="gb-evid-tag">{esc(eid)}</span>' for eid in cited_events)
+        policies_html = "".join(
+            f'<span class="gb-evid-tag" title="{esc(policy_titles.get(pid, ""))}">{esc(pid)}</span>'
+            for pid in cited_policies
+        )
+        st.markdown(
+            f'<div class="gb-info-card">'
+            f'<div class="field-label">Evidence cited by the AI</div><div>{events_html}</div>'
+            f'<div class="field-label" style="margin-top:0.5rem">Policies cited by the AI</div><div>{policies_html}</div>'
+            f'<div style="font-size:0.74rem;color:#64748b;margin-top:0.5rem">{ICON_INFO}&nbsp;'
+            "Every cited ID was checked against this incident's events and the retrieved policies. "
+            "ID checks do not prove each sentence is correct — read the report as AI-generated interpretation, "
+            "and treat anything under <em>Inferred risk</em> or <em>Unknowns</em> as unconfirmed.</div>"
+            f"</div>",
             unsafe_allow_html=True,
         )
         st.markdown('<div class="gb-report-box">', unsafe_allow_html=True)
@@ -1408,11 +1514,14 @@ elif current_view == "detail":
     elif st.session_state.report_status:
         st.markdown(
             f'<div class="gb-msg-error">{ICON_ALERT}&nbsp;AI report unavailable — '
-            f"{st.session_state.report_status}<br>"
-            f'<span style="font-size:0.78rem;opacity:0.85">Approval remains disabled. '
-            f"Verify the API key, network access, account credits, and configured model name.</span></div>",
+            f"{esc(st.session_state.report_status)}<br>"
+            f'<span style="font-size:0.78rem;opacity:0.85">No explanation was generated or substituted, and approval remains disabled. '
+            f"Verify the API key, network access, account credits, and configured model name, then retry.</span></div>",
             unsafe_allow_html=True,
         )
+        if st.button("↻ Retry AI analysis", key="ai_retry_btn", disabled=not bool(matched_policies)):
+            run_ai_analysis(incident, analysis, matched_policies, current_ctx)
+            st.rerun()
     else:
         st.markdown(
             f'<div class="gb-msg-info" style="margin-top:0.5rem">{ICON_INFO}&nbsp;'
@@ -1430,7 +1539,7 @@ elif current_view == "detail":
     st.markdown(
         f'<div class="gb-decision-panel">'
         f'<div class="gb-decision-field-label">Proposed Simulated Action</div>'
-        f'<div class="gb-decision-field-value">{analysis["suggested_action"]}</div>'
+        f'<div class="gb-decision-field-value">{esc(analysis["suggested_action"])}</div>'
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -1508,9 +1617,9 @@ elif current_view == "detail":
         st.markdown(
             f'<div class="gb-decision-result">'
             f'<div class="dr-label">Simulated Decision Recorded</div>'
-            f'<div class="{result_cls}">{result_icon} {d["decision"]}: {d["outcome"]}</div>'
+            f'<div class="{result_cls}">{result_icon} {esc(d["decision"])}: {esc(d["outcome"])}</div>'
             f'<div style="font-size:0.74rem;color:#64748b;margin-top:0.3rem">'
-            f'Report ID: <span class="mono">{d.get("report_id","—")}</span>'
+            f'Report ID: <span class="mono">{esc(d.get("report_id","—"))}</span>'
             f"</div>"
             f"</div>",
             unsafe_allow_html=True,
@@ -1580,12 +1689,12 @@ elif current_view == "audit":
             iid_rec = rec.get("incident_id", "—")
             st.markdown(
                 f'<div class="gb-table-row gb-audit-cols" style="grid-template-columns:{col_widths}">'
-                f'<span class="mono" style="font-size:0.74rem;color:#94a3b8">{ts_val}</span>'
-                f'<span class="mono">{iid_rec}</span>'
-                f'<span style="color:#94a3b8">{rec.get("actor","—")}</span>'
+                f'<span class="mono" style="font-size:0.74rem;color:#94a3b8">{esc(ts_val)}</span>'
+                f'<span class="mono">{esc(iid_rec)}</span>'
+                f'<span style="color:#94a3b8">{esc(rec.get("actor","—"))}</span>'
                 f"<span>{dec_badge}</span>"
                 f"<span>{sim_badge}</span>"
-                f'<span class="mono" style="font-size:0.68rem;color:#4a7fa5;word-break:break-all">{rid}</span>'
+                f'<span class="mono" style="font-size:0.68rem;color:#4a7fa5;word-break:break-all">{esc(rid)}</span>'
                 f"</div>",
                 unsafe_allow_html=True,
             )

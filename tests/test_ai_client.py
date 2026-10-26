@@ -8,7 +8,7 @@ import httpx
 from openai import OpenAI
 
 import ai_client
-from ai_client import AIReportError, generate_report, validate_report_citations
+from ai_client import AIReportError, extract_citation_ids, generate_report, validate_report_citations
 
 FAKE_KEY = "test-only-key-not-a-secret-7f3a"
 
@@ -97,6 +97,16 @@ class TestReportValidation(unittest.TestCase):
         usable, _ = validate_report_citations("Guidance POL-001 and POL-002.", ["EVT-006"], ["POL-001", "POL-002"])
         self.assertFalse(usable)
 
+    def test_extract_citation_ids_returns_well_formed_ids_in_order(self):
+        events, policies = extract_citation_ids(
+            "POL-002 and evt-006, then EVT-002, EVT-006 again, POL-001, xEVT-009 and EVT-1_x."
+        )
+        self.assertEqual(events, ["EVT-006", "EVT-002"])
+        self.assertEqual(policies, ["POL-002", "POL-001"])
+
+    def test_extract_citation_ids_handles_uncited_report(self):
+        self.assertEqual(extract_citation_ids("No identifiers here."), ([], []))
+
     def test_missing_key_is_a_safe_error(self):
         with self.assertRaises(AIReportError):
             generate_report("", {}, {}, [])
@@ -168,6 +178,10 @@ class TestProviderBoundary(unittest.TestCase):
         self.assertEqual(body["temperature"], 0.2)
         self.assertEqual(body["max_tokens"], 750)
         self.assertEqual([message["role"] for message in body["messages"]], ["system", "user"])
+        system = body["messages"][0]["content"]
+        for section in ("Observed facts", "Inferred risk", "Unknowns and limitations"):
+            self.assertIn(section, system)
+        self.assertIn("not proof of compromise", system)
         sent = json.loads(body["messages"][1]["content"])
         self.assertEqual(sent["incident"], self.incident)
         self.assertEqual(sent["deterministic_rule_analysis"], self.analysis)
