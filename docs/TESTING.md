@@ -16,7 +16,7 @@ All tests are offline. Provider tests use mocks or an in-process `httpx.MockTran
 
 ### `TestGuardBeeUI` (14) — headless Streamlit `AppTest`
 
-Pages are reached through the app's own controls (Dashboard "Open investigation", decision panel "View in Audit History", Audit History "Open incident"), so navigation buttons are exercised too.
+Pages are reached through the app's own controls (Dashboard "Investigate", decision panel "View in Audit History", Audit History "Open incident"), so navigation buttons are exercised too.
 
 - `test_dashboard_and_every_incident_render`
 - `test_app_injects_no_dynamic_html`
@@ -33,7 +33,7 @@ Pages are reached through the app's own controls (Dashboard "Open investigation"
 - `test_invalid_citations_keep_decision_locked`
 - `test_provider_failure_offers_retry_without_fabricating`
 
-Manual visual check (headless Microsoft Edge screenshots, 1440px and 1280px wide): all three pages, every investigation tab, and the generated-report and recorded-decision states (using a canned report, no provider call). Narrower than about 1100px, metric labels truncate with an ellipsis; their full text remains in the tooltip.
+Manual visual check (headless Microsoft Edge screenshots, 1440px and 1280px wide): all three pages, every investigation tab, and the generated-report and recorded-decision states (using a canned report, no provider call). The dashboard fits a 1440×900 viewport without scrolling; at 1280px its KPI cards stay one height and every table column is visible. Narrower than about 1100px, metric labels truncate with an ellipsis; their full text remains in the tooltip.
 
 UI specification checklist items that cannot be tested until the backend provides them: engine-produced NORMAL / INSUFFICIENT_EVIDENCE results for real incidents, partial validation with rejected-record reporting, and audit history that survives an app restart (SQLite). The classification and priority display is tested with a patched engine result.
 

@@ -20,7 +20,7 @@ def start_app():
 
 
 def open_incident(incident_id):
-    """Reach an incident the way an analyst does: Dashboard -> Open investigation."""
+    """Reach an incident the way an analyst does: Dashboard -> Investigate."""
     app = start_app()
     app.selectbox(key="dashboard_pick").set_value(incident_id).run()
     app.button(key="dashboard_open").click().run()

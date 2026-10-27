@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import altair as alt
 import streamlit as st
 
 from ai_client import (
@@ -80,7 +81,13 @@ html, body, .stApp { font-family: Inter, "Segoe UI", system-ui, -apple-system, R
 .stApp { background: var(--gb-bg); }
 [data-testid="stMainBlockContainer"] { padding-top: 2rem; padding-bottom: 3rem; max-width: 1360px; }
 h1, h2, h3, h4 { color: var(--gb-text); letter-spacing: -0.01em; }
-h1 { font-weight: 750 !important; }
+h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.15rem !important; }
+[data-testid="stMain"] [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p { font-size: 0.92rem; }
+
+/* Dashboard: compact card headings and equal-height KPI cards */
+[class*="st-key-dash-"] h3 { font-size: 1.05rem !important; font-weight: 700; padding: 0 0 0.35rem !important; }
+[data-testid="stMain"] [class*="st-key-tone-"] { min-height: 142px; }
+.st-key-dash-severity, .st-key-dash-risk { min-height: 262px; }
 
 /* Sidebar */
 [data-testid="stSidebar"] {
@@ -324,14 +331,13 @@ def latest_event_time(incident: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 def page_header(title: str, subtitle: str, description: str) -> None:
     st.title(title)
-    st.markdown(f"**{subtitle}**")
-    st.caption(description)
+    st.caption(f"**{subtitle}** · {description}")
 
 
 def demo_banner() -> None:
     st.warning(
-        "**Demo only — simulated environment.** Synthetic login incidents from a static JSON file. "
-        "Not live monitoring; GuardBee never blocks accounts, revokes sessions, or changes any system.",
+        "**Demo only — simulated environment.** Synthetic incidents from a static JSON file; "
+        "GuardBee never blocks accounts, revokes sessions, or changes any system.",
         icon="⚠️",
     )
 
@@ -369,14 +375,14 @@ def incident_table(incident_list: list[dict[str, Any]], show_latest: bool = True
         hide_index=True,
         column_config={
             "Incident": st.column_config.TextColumn("Incident", width="small"),
-            "Title": st.column_config.TextColumn("Title", width="medium"),
-            "Classification": st.column_config.TextColumn("Classification", width="small"),
+            "Title": st.column_config.TextColumn("Title"),
+            "Classification": st.column_config.TextColumn("Classification"),
             "Risk score": st.column_config.ProgressColumn(
                 "Risk score", min_value=0, max_value=100, format="%d", help=RISK_NOTE, width="small"
             ),
             "Severity": st.column_config.TextColumn("Severity", width="small"),
             "Priority": st.column_config.TextColumn("Priority", width="small"),
-            "Latest event (UTC)": st.column_config.TextColumn("Latest event (UTC)", width="medium"),
+            "Latest event (UTC)": st.column_config.TextColumn("Latest event (UTC)"),
         },
     )
 
@@ -447,18 +453,18 @@ def dashboard_page() -> None:
     page_header(
         "GuardBee",
         "Security Analytics Console",
-        "Overview of the synthetic login incidents in data/incidents.json, analysed by GuardBee's deterministic "
-        "rules engine. Open an incident to investigate its evidence, policies, and AI report.",
+        "Synthetic login incidents from data/incidents.json, analysed by the deterministic rules engine.",
     )
     demo_banner()
 
-    cards = st.columns(5)
+    # Row 1: KPI cards. Short captions keep every card one height at laptop widths.
+    cards = st.columns(5, gap="small")
     metric_card(cards[0], "Valid incidents", len(incidents), "Loaded and validated", tone="blue")
     if any_classified:
         for column, key, caption in zip(
             cards[1:4],
             ("SUSPICIOUS", "NORMAL", "INSUFFICIENT_EVIDENCE"),
-            ("Match a suspicious pattern", "No suspicious pattern found", "Cannot classify either way"),
+            ("Suspicious pattern", "No pattern found", "Cannot classify"),
         ):
             count = sum(1 for analysis in analyses.values() if classification_of(analysis) == key)
             metric_card(column, key.replace("_", " ").title(), count, caption, tone=CLASSIFICATION_TONES[key])
@@ -466,55 +472,79 @@ def dashboard_page() -> None:
         for column, label, tone in zip(
             cards[1:4], ("Suspicious", "Normal", "Insufficient evidence"), ("red", "green", "amber")
         ):
-            metric_card(column, label, "—", "Engine does not classify yet", tone=tone)
+            metric_card(column, label, "—", "Not classified yet", tone=tone)
     metric_card(
-        cards[4], "Validation", "Passed", "Fail-closed loader: 0 rejected",
+        cards[4], "Validation", "Passed", "0 rejected",
         help_text="Every record must pass validation or loading stops. Partial processing is not implemented yet.",
         tone="violet",
     )
 
-    left, right = st.columns([1, 2], gap="medium")
-    with left:
-        with st.container(border=True):
-            st.subheader("Classification overview")
-            if any_classified:
-                for key, (color, wording) in CLASSIFICATIONS.items():
-                    count = sum(1 for analysis in analyses.values() if classification_of(analysis) == key)
-                    st.markdown(f":{color}-background[{key.replace('_', ' ')}] **{count}**")
-                    st.progress(count / len(incidents))
-                    st.caption(wording)
-            else:
-                st.info(
-                    "Classification counts are unavailable: engine.py does not return a classification yet. "
-                    "GuardBee does not infer one from the risk score.",
-                    icon="ℹ️",
+    # Row 2: severity breakdown beside the per-incident risk scores.
+    left, right = st.columns([2, 3], gap="small")
+    with card(left, "dash-severity"):
+        st.subheader("Severity distribution")
+        for label in ("HIGH", "MEDIUM", "LOW", None):
+            count = sum(1 for analysis in analyses.values() if analysis.get("severity") == label)
+            if label is None and not count:
+                continue
+            name = label.title() if label else NOT_ASSIGNED
+            st.progress(count / len(incidents), text=f"{name} · {count} of {len(incidents)}")
+        if any_classified:
+            st.caption(
+                " · ".join(
+                    f"{key.replace('_', ' ').title()}: "
+                    f"{sum(1 for analysis in analyses.values() if classification_of(analysis) == key)}"
+                    for key in CLASSIFICATIONS
                 )
-            st.markdown("**Severity distribution**")
-            for label in ("HIGH", "MEDIUM", "LOW", None):
-                count = sum(1 for analysis in analyses.values() if analysis.get("severity") == label)
-                if label is None and not count:
-                    continue
-                name = label.title() if label else NOT_ASSIGNED
-                st.progress(count / len(incidents), text=f"{name}: {count} of {len(incidents)}")
-            st.caption(RISK_NOTE)
-
-    with right:
-        with st.container(border=True):
-            st.subheader("Recent incidents")
-            st.caption("Newest activity first (by latest event time). Values come directly from the engine analysis.")
-            recent = sorted(incidents, key=lambda incident: latest_event_time(incident), reverse=True)
-            incident_table(recent, show_latest=False)
-            if not any_classified:
-                st.caption("— means the engine does not provide this field yet.")
-            pick, action = st.columns([3, 2], vertical_alignment="bottom")
-            chosen = pick.selectbox(
-                "Select an incident",
-                [incident["id"] for incident in recent],
-                format_func=lambda identifier: f"{identifier} · {incident_by_id[identifier]['title']}",
-                key="dashboard_pick",
             )
-            if action.button("Open investigation →", key="dashboard_open", type="primary"):
-                go_to_incident(chosen)
+        else:
+            st.caption("Classification: engine.py does not classify yet; GuardBee never infers one from the score.")
+
+    with card(right, "dash-risk"):
+        st.subheader("Risk score by incident")
+        scores = [
+            {
+                "Incident": incident["id"],
+                "Title": incident["title"],
+                "Risk score": analyses[incident["id"]]["risk_score"],
+                "Severity": severity_text(analyses[incident["id"]]),
+            }
+            for incident in incidents
+        ]
+        bars = alt.Chart(alt.Data(values=scores)).encode(
+            x=alt.X("Risk score:Q", scale=alt.Scale(domain=[0, 100]), axis=alt.Axis(tickCount=5), title=None),
+            y=alt.Y("Incident:N", sort="-x", title=None),
+            tooltip=["Incident:N", "Title:N", "Risk score:Q", "Severity:N"],
+        )
+        chart = bars.mark_bar(color="#4F46E5", cornerRadiusEnd=4, height=18) + bars.mark_text(
+            align="left", dx=6, color="#14213D", fontWeight=600
+        ).encode(text="Risk score:Q")
+        st.altair_chart(
+            chart.properties(height=150, padding={"left": 4, "right": 16, "top": 4, "bottom": 4})
+            .configure_view(stroke=None)
+            .configure_axis(
+                labelColor="#64748B", titleColor="#64748B", gridColor="#EEF2F7", domainColor="#E2E8F0"
+            ),
+        )
+        st.caption("Rule-based score, not a probability. Hover a bar for details.")
+
+    # Row 3: full-width table so titles are not truncated; open action sits in the header row.
+    with card(st, "dash-recent"):
+        heading, pick, action = st.columns([4, 4, 2], vertical_alignment="bottom")
+        with heading:
+            st.subheader("Recent incidents")
+            st.caption("Newest activity first · — = not provided by the engine yet")
+        recent = sorted(incidents, key=lambda incident: latest_event_time(incident), reverse=True)
+        chosen = pick.selectbox(
+            "Select an incident",
+            [incident["id"] for incident in recent],
+            format_func=lambda identifier: f"{identifier} · {incident_by_id[identifier]['title']}",
+            key="dashboard_pick",
+            label_visibility="collapsed",
+        )
+        if action.button("Investigate →", key="dashboard_open", type="primary"):
+            go_to_incident(chosen)
+        incident_table(recent)
 
 
 # ---------------------------------------------------------------------------

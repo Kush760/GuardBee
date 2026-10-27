@@ -47,6 +47,7 @@
 - Identifiers render as literal inline code so e-mail addresses are never turned into links; removed the deprecated `use_container_width` argument.
 - UI tests rewritten for page navigation (14 tests). The suite grew from 68 to 70 tests.
 - Gradient styling: navy-to-indigo sidebar, indigo/violet active page, sidebar demo card and primary buttons, and green/red gradient Approve/Reject once enabled. Summary and indicator cards are tinted by status (blue, rose, green, amber, violet); on the investigation page the tint follows the engine's actual classification and severity. Tints need keyed containers (newer Streamlit); older versions in the allowed range show plain white cards.
+- Compact dashboard layout: one-line page subtitle and demo banner, equal-height KPI cards with short captions, a severity-distribution card beside a "Risk score by incident" bar chart (Altair, which ships with Streamlit; fixed 0–100 axis, hover tooltips), and a full-width recent-incidents table with the incident picker and "Investigate →" in its header row. The dashboard fits a 1440×900 screen without scrolling.
 
 ## Documentation and delivery assets
 
