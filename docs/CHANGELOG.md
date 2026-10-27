@@ -56,6 +56,7 @@
 - Interactive Security Incidents view: compact Risk score / Severity / Priority cards (details in tooltips), tinted icon chips on incident cards and the header, a connected vertical timeline with row hover, hover lift on cards and buttons, light "Request AI Report" button, Approve / Reject shown in faded green / red while locked, and "View Full Report" opening a dialog with the engine's rule-by-rule breakdown (no AI content). UI tests: 16 (suite 72).
 - Sidebar: navigation stays at the top while the Demo only and AI provider cards are pinned to the bottom (no divider gap), the AI provider details sit in their own card with a status dot, a small footer was added, and the sidebar scrollbar is slim and translucent.
 - Dashboard header logo is now an SVG with real text for "GuardBee" and "Security Analytics Console" (the JPEG-derived PNG made the small subtitle blurry); only the bee shield remains a bitmap.
+- Removed the red Demo Only card from the dashboard header; the sidebar's Demo only card, visible on every page, keeps the disclaimer.
 
 ## Documentation and delivery assets
 

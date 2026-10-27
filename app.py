@@ -115,8 +115,6 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [class*="st-key-tone-blue-kpi"] [data-testid="stMetricLabel"] p { color: #2563EB; }
 [class*="st-key-kpi-icon-violet"] { background: #DDD6FE; color: #6D28D9; }
 [class*="st-key-tone-violet-kpi"] [data-testid="stMetricLabel"] p { color: #6D28D9; }
-.st-key-dash-demo { background: #FEF2F2 !important; border-color: #FECACA !important; }
-.st-key-dash-demo p, .st-key-dash-demo [data-testid="stCaptionContainer"] { color: #B91C1C !important; }
 .st-key-dash-overview, .st-key-dash-recent { min-height: 318px; }
 .st-key-dash-thead { border-bottom: 1px solid var(--gb-border); }
 .st-key-dash-thead [data-testid="stCaptionContainer"] { font-weight: 600; text-transform: uppercase;
@@ -567,15 +565,8 @@ def overview_donut(groups: list[tuple[str, int, str]]) -> None:
 
 
 def dashboard_page() -> None:
-    head, notice = st.columns([3, 2], vertical_alignment="center")
-    with head:
-        st.image(str(ASSETS / "guardbee_logo_full.svg"), width=340)
-        st.caption("**AI-Powered Security Analysis for Safer Access**")
-    with card(notice, "dash-demo"):
-        st.markdown("**:material/error: Demo Only**")
-        st.caption(
-            "This is a demo tool. It does not provide live monitoring, blocking, or actual containment of accounts."
-        )
+    st.image(str(ASSETS / "guardbee_logo_full.svg"), width=340)
+    st.caption("**AI-Powered Security Analysis for Safer Access**")
 
     # Row 1: KPI cards
     cards = st.columns(5, gap="small")
