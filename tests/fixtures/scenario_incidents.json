@@ -104,86 +104,114 @@
   },
   {
     "id": "INC-1004",
-    "title": "Repeated successes from a known IP",
+    "title": "Normal successful logins from a known IP",
     "account": "analyst@example.test",
-    "department": "Security",
+    "department": "Analytics",
     "known_ips": [
-      "203.0.113.50"
+      "203.0.113.120"
     ],
     "events": [
       {
-        "id": "EVT-203",
+        "id": "EVT-301",
         "time_utc": "2026-10-20T09:00:00Z",
         "type": "login_success",
-        "ip": "203.0.113.50",
-        "country": "India"
+        "ip": "203.0.113.120",
+        "country": "Unknown"
       },
       {
-        "id": "EVT-204",
-        "time_utc": "2026-10-20T09:05:00Z",
+        "id": "EVT-302",
+        "time_utc": "2026-10-20T09:02:00Z",
         "type": "login_success",
-        "ip": "203.0.113.50",
-        "country": "India"
+        "ip": "203.0.113.120",
+        "country": "Unknown"
       },
       {
-        "id": "EVT-205",
+        "id": "EVT-303",
+        "time_utc": "2026-10-20T09:04:00Z",
+        "type": "login_success",
+        "ip": "203.0.113.120",
+        "country": "Unknown"
+      },
+      {
+        "id": "EVT-304",
+        "time_utc": "2026-10-20T09:06:00Z",
+        "type": "login_success",
+        "ip": "203.0.113.120",
+        "country": "Unknown"
+      },
+      {
+        "id": "EVT-305",
+        "time_utc": "2026-10-20T09:08:00Z",
+        "type": "login_success",
+        "ip": "203.0.113.120",
+        "country": "Unknown"
+      },
+      {
+        "id": "EVT-306",
         "time_utc": "2026-10-20T09:10:00Z",
         "type": "login_success",
-        "ip": "203.0.113.50",
-        "country": "India"
-      },
-      {
-        "id": "EVT-206",
-        "time_utc": "2026-10-20T09:15:00Z",
-        "type": "login_success",
-        "ip": "203.0.113.50",
-        "country": "India"
+        "ip": "203.0.113.120",
+        "country": "Unknown"
       }
     ]
   },
   {
     "id": "INC-1005",
-    "title": "Two known-IP failures then success",
-    "account": "hr-coordinator@example.test",
+    "title": "Two failed logins followed by known-IP successes",
+    "account": "hr-assistant@example.test",
     "department": "Human Resources",
     "known_ips": [
-      "203.0.113.60"
+      "203.0.113.121"
     ],
     "events": [
       {
-        "id": "EVT-210",
+        "id": "EVT-307",
         "time_utc": "2026-10-20T10:00:00Z",
         "type": "login_failed",
-        "ip": "203.0.113.60",
-        "country": "India"
+        "ip": "203.0.113.121",
+        "country": "Unknown"
       },
       {
-        "id": "EVT-211",
-        "time_utc": "2026-10-20T10:01:00Z",
+        "id": "EVT-308",
+        "time_utc": "2026-10-20T10:02:00Z",
         "type": "login_failed",
-        "ip": "203.0.113.60",
-        "country": "India"
+        "ip": "203.0.113.121",
+        "country": "Unknown"
       },
       {
-        "id": "EVT-212",
-        "time_utc": "2026-10-20T10:03:00Z",
+        "id": "EVT-309",
+        "time_utc": "2026-10-20T10:04:00Z",
         "type": "login_success",
-        "ip": "203.0.113.60",
-        "country": "India"
+        "ip": "203.0.113.121",
+        "country": "Unknown"
       },
       {
-        "id": "EVT-213",
-        "time_utc": "2026-10-20T10:05:00Z",
+        "id": "EVT-310",
+        "time_utc": "2026-10-20T10:06:00Z",
         "type": "login_success",
-        "ip": "203.0.113.60",
-        "country": "India"
+        "ip": "203.0.113.121",
+        "country": "Unknown"
+      },
+      {
+        "id": "EVT-311",
+        "time_utc": "2026-10-20T10:08:00Z",
+        "type": "login_success",
+        "ip": "203.0.113.121",
+        "country": "Unknown"
+      },
+      {
+        "id": "EVT-312",
+        "time_utc": "2026-10-20T10:10:00Z",
+        "type": "login_success",
+        "ip": "203.0.113.121",
+        "country": "Unknown"
       }
     ]
   },
   {
     "id": "INC-1006",
-    "title": "Known-IP failure burst then successes",
-    "account": "support-lead@example.test",
+    "title": "Three failed attempts followed by known-IP successes",
+    "account": "support-specialist@example.test",
     "department": "Support",
     "known_ips": [
       "203.0.113.122"
@@ -194,124 +222,145 @@
         "time_utc": "2026-10-20T11:00:00Z",
         "type": "login_failed",
         "ip": "203.0.113.122",
-        "country": "India"
+        "country": "Unknown"
       },
       {
         "id": "EVT-314",
-        "time_utc": "2026-10-20T11:01:00Z",
-        "type": "login_failed",
-        "ip": "203.0.113.122",
-        "country": "India"
-      },
-      {
-        "id": "EVT-315",
         "time_utc": "2026-10-20T11:02:00Z",
         "type": "login_failed",
         "ip": "203.0.113.122",
-        "country": "India"
+        "country": "Unknown"
+      },
+      {
+        "id": "EVT-315",
+        "time_utc": "2026-10-20T11:04:00Z",
+        "type": "login_failed",
+        "ip": "203.0.113.122",
+        "country": "Unknown"
       },
       {
         "id": "EVT-316",
-        "time_utc": "2026-10-20T11:03:00Z",
+        "time_utc": "2026-10-20T11:06:00Z",
         "type": "login_success",
         "ip": "203.0.113.122",
-        "country": "India"
+        "country": "Unknown"
       },
       {
         "id": "EVT-317",
-        "time_utc": "2026-10-20T11:04:00Z",
+        "time_utc": "2026-10-20T11:08:00Z",
         "type": "login_success",
         "ip": "203.0.113.122",
-        "country": "India"
+        "country": "Unknown"
       },
       {
         "id": "EVT-318",
-        "time_utc": "2026-10-20T11:05:00Z",
+        "time_utc": "2026-10-20T11:10:00Z",
         "type": "login_success",
         "ip": "203.0.113.122",
-        "country": "India"
+        "country": "Unknown"
       }
     ]
   },
   {
     "id": "INC-1007",
-    "title": "Known successes with one unfamiliar login",
-    "account": "marketing-ops@example.test",
-    "department": "Marketing",
+    "title": "Successful login from an unfamiliar IP",
+    "account": "product-owner@example.test",
+    "department": "Product",
     "known_ips": [
-      "203.0.113.70"
+      "203.0.113.123"
     ],
     "events": [
       {
-        "id": "EVT-220",
+        "id": "EVT-319",
         "time_utc": "2026-10-20T12:00:00Z",
         "type": "login_success",
-        "ip": "203.0.113.70",
-        "country": "India"
+        "ip": "203.0.113.123",
+        "country": "Unknown"
       },
       {
-        "id": "EVT-221",
+        "id": "EVT-320",
+        "time_utc": "2026-10-20T12:02:00Z",
+        "type": "login_success",
+        "ip": "203.0.113.123",
+        "country": "Unknown"
+      },
+      {
+        "id": "EVT-321",
+        "time_utc": "2026-10-20T12:04:00Z",
+        "type": "login_success",
+        "ip": "203.0.113.123",
+        "country": "Unknown"
+      },
+      {
+        "id": "EVT-322",
+        "time_utc": "2026-10-20T12:06:00Z",
+        "type": "login_success",
+        "ip": "203.0.113.123",
+        "country": "Unknown"
+      },
+      {
+        "id": "EVT-323",
+        "time_utc": "2026-10-20T12:08:00Z",
+        "type": "login_success",
+        "ip": "203.0.113.123",
+        "country": "Unknown"
+      },
+      {
+        "id": "EVT-324",
         "time_utc": "2026-10-20T12:10:00Z",
         "type": "login_success",
-        "ip": "203.0.113.70",
-        "country": "India"
-      },
-      {
-        "id": "EVT-222",
-        "time_utc": "2026-10-20T14:00:00Z",
-        "type": "login_success",
-        "ip": "198.51.100.90",
+        "ip": "198.51.100.123",
         "country": "Unknown"
       }
     ]
   },
   {
     "id": "INC-1008",
-    "title": "Unfamiliar failure burst then successes",
-    "account": "eng-user@example.test",
+    "title": "Repeated failures followed by unfamiliar-IP successes",
+    "account": "engineering-lead@example.test",
     "department": "Engineering",
     "known_ips": [
-      "203.0.113.80"
+      "203.0.113.124"
     ],
     "events": [
       {
         "id": "EVT-325",
-        "time_utc": "2026-10-20T15:00:00Z",
+        "time_utc": "2026-10-20T13:00:00Z",
         "type": "login_failed",
         "ip": "198.51.100.124",
         "country": "Unknown"
       },
       {
         "id": "EVT-326",
-        "time_utc": "2026-10-20T15:01:00Z",
+        "time_utc": "2026-10-20T13:02:00Z",
         "type": "login_failed",
         "ip": "198.51.100.124",
         "country": "Unknown"
       },
       {
         "id": "EVT-327",
-        "time_utc": "2026-10-20T15:02:00Z",
+        "time_utc": "2026-10-20T13:04:00Z",
         "type": "login_failed",
         "ip": "198.51.100.124",
         "country": "Unknown"
       },
       {
         "id": "EVT-328",
-        "time_utc": "2026-10-20T15:03:00Z",
+        "time_utc": "2026-10-20T13:06:00Z",
         "type": "login_failed",
         "ip": "198.51.100.124",
         "country": "Unknown"
       },
       {
         "id": "EVT-329",
-        "time_utc": "2026-10-20T15:04:00Z",
+        "time_utc": "2026-10-20T13:08:00Z",
         "type": "login_success",
         "ip": "198.51.100.124",
         "country": "Unknown"
       },
       {
         "id": "EVT-330",
-        "time_utc": "2026-10-20T15:05:00Z",
+        "time_utc": "2026-10-20T13:10:00Z",
         "type": "login_success",
         "ip": "198.51.100.124",
         "country": "Unknown"
@@ -320,43 +369,43 @@
   },
   {
     "id": "INC-1009",
-    "title": "Failures spaced outside burst window",
-    "account": "legal-reviewer@example.test",
-    "department": "Legal",
+    "title": "Failures spread outside the burst window",
+    "account": "qa-user-1009@example.test",
+    "department": "Quality Assurance",
     "known_ips": [
-      "203.0.113.90"
+      "203.0.113.129"
     ],
     "events": [
       {
-        "id": "EVT-230",
-        "time_utc": "2026-10-19T08:00:00Z",
+        "id": "EVT-401",
+        "time_utc": "2026-10-21T08:00:00Z",
         "type": "login_failed",
-        "ip": "203.0.113.90",
-        "country": "India"
+        "ip": "198.51.100.129",
+        "country": "Unknown"
       },
       {
-        "id": "EVT-231",
-        "time_utc": "2026-10-19T12:00:00Z",
+        "id": "EVT-402",
+        "time_utc": "2026-10-21T12:00:00Z",
         "type": "login_failed",
-        "ip": "203.0.113.90",
-        "country": "India"
+        "ip": "198.51.100.129",
+        "country": "Unknown"
       },
       {
-        "id": "EVT-232",
-        "time_utc": "2026-10-19T16:00:00Z",
+        "id": "EVT-403",
+        "time_utc": "2026-10-21T16:00:00Z",
         "type": "login_failed",
-        "ip": "203.0.113.90",
-        "country": "India"
+        "ip": "198.51.100.129",
+        "country": "Unknown"
       }
     ]
   },
   {
     "id": "INC-1010",
-    "title": "Overlapping rule evidence on unfamiliar IP",
-    "account": "ops-analyst@example.test",
-    "department": "Operations",
+    "title": "Same evidence matches overlapping rules",
+    "account": "qa-user-1010@example.test",
+    "department": "Quality Assurance",
     "known_ips": [
-      "203.0.113.100"
+      "203.0.113.130"
     ],
     "events": [
       {
@@ -391,8 +440,8 @@
   },
   {
     "id": "INC-1012",
-    "title": "Known-IP burst then success in Quality Assurance",
-    "account": "qa-tester@example.test",
+    "title": "Suspicious signals from a known IP",
+    "account": "qa-user-1012@example.test",
     "department": "Quality Assurance",
     "known_ips": [
       "203.0.113.132"
@@ -400,28 +449,28 @@
     "events": [
       {
         "id": "EVT-409",
-        "time_utc": "2026-10-21T12:00:00Z",
+        "time_utc": "2026-10-21T11:00:00Z",
         "type": "login_failed",
         "ip": "203.0.113.132",
         "country": "India"
       },
       {
         "id": "EVT-410",
-        "time_utc": "2026-10-21T12:01:00Z",
+        "time_utc": "2026-10-21T11:01:00Z",
         "type": "login_failed",
         "ip": "203.0.113.132",
         "country": "India"
       },
       {
         "id": "EVT-411",
-        "time_utc": "2026-10-21T12:02:00Z",
+        "time_utc": "2026-10-21T11:02:00Z",
         "type": "login_failed",
         "ip": "203.0.113.132",
         "country": "India"
       },
       {
         "id": "EVT-412",
-        "time_utc": "2026-10-21T12:03:00Z",
+        "time_utc": "2026-10-21T11:03:00Z",
         "type": "login_success",
         "ip": "203.0.113.132",
         "country": "India"
@@ -430,8 +479,8 @@
   },
   {
     "id": "INC-1013",
-    "title": "Known-IP burst then success in Finance",
-    "account": "finance-ops@example.test",
+    "title": "Same login pattern in a different department",
+    "account": "qa-user-1013@example.test",
     "department": "Finance",
     "known_ips": [
       "203.0.113.133"
@@ -469,11 +518,11 @@
   },
   {
     "id": "INC-1014",
-    "title": "Out-of-order timestamps with two prior failures",
-    "account": "remote-contractor@example.test",
-    "department": "Engineering",
+    "title": "Events provided out of chronological order",
+    "account": "qa-user-1014@example.test",
+    "department": "Quality Assurance",
     "known_ips": [
-      "203.0.113.140"
+      "203.0.113.134"
     ],
     "events": [
       {

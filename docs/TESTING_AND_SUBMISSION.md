@@ -2,23 +2,33 @@
 
 ## Automated tests
 
-Run the repository suite from the project root:
+The CI workflow and agent completion gate use the unittest discovery command. From the project root (after installing `requirements.txt`):
 
-```powershell
-py -m pytest -v
+```bash
+python -m unittest discover -s tests -v
 ```
 
+On Windows with the Python launcher you may use `py -m unittest discover -s tests -v`.
+
 The tests are offline. They use synthetic JSON and mock the provider client, so they do not require a Nebius key, internet access, or a live model.
-`pytest` is declared in `requirements.txt`; install the project dependencies before running the command in a new environment.
+
+`pytest` remains listed in `requirements.txt` as an optional runner. If you prefer pytest, target the `tests/` package only so sibling folders are not collected:
+
+```bash
+python -m pytest tests -v
+```
+
+Do not rely on a bare `pytest` invocation from a parent directory that also contains another copy of the suite (for example a nested recovery tree).
 
 Coverage includes:
 
-- high, medium, and low deterministic risk outcomes and a scoring boundary;
-- valid, malformed, incomplete, missing, and empty data cases;
+- high and medium deterministic severity outcomes, score boundaries, and the coded LOW band for `SUSPICIOUS` scores below 30 (current rule points typically yield MEDIUM or HIGH when suspicious);
+- valid, malformed, incomplete, missing, and empty data cases, including partitioned valid/invalid handling;
 - relevant, no-match, empty-query, and threshold-excluded TF-IDF retrieval;
 - missing credentials, mocked provider exceptions, and malformed provider responses;
-- accepted, missing, fabricated, stale, and unretrieved citation IDs;
-- duplicate/conflicting decision prevention, new-analysis behavior, and stale-context rejection.
+- accepted, missing, fabricated, stale, and unretrieved citation IDs (including Unicode-dash normalization);
+- duplicate/conflicting decision prevention, new-analysis behavior, and stale-context rejection;
+- SQLite audit save/reload across a new connection (simulating app restart) and refusal of secret-bearing fields.
 
 ## Manual verification still required
 
@@ -31,7 +41,7 @@ Automated tests do not prove the browser workflow or a live provider integration
 5. Request one live report and confirm it cites only IDs shown for the selected incident and retrieved policies.
 6. Confirm Approve and Reject are unavailable before a valid report, permit one decision after a valid report, and relock after it.
 7. Confirm the audit entry says simulation-only and that no real account or system changed.
-8. Refresh or end the session and confirm temporary audit history is not represented as persistent storage.
+8. Refresh the browser or stop and restart `streamlit run app.py`, then confirm the same simulated decision still appears in **Decision & audit** / audit history (SQLite persistence via `audit_store.py`, default `data/audit.db`, overridable with `GUARDBEE_AUDIT_DB`). History must not disappear merely because the Streamlit session restarted.
 
 ## Submission readiness checklist
 
@@ -42,6 +52,6 @@ Before publishing or submitting, confirm the following facts rather than claimin
 - The live Nebius/NVIDIA flow has been exercised with a permitted account and model.
 - The demo clearly identifies all data and outcomes as synthetic and simulated.
 - README setup steps work from a clean environment.
-- A short demonstration shows the complete analyst workflow and states the temporary-audit limitation.
+- A short demonstration shows the complete analyst workflow and states that simulated audit rows persist in local SQLite across restart (still simulation-only; no real account changes).
 
 This repository does not create a release archive or deployment automatically. Produce any final ZIP only after these checks are complete.

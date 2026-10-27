@@ -135,8 +135,8 @@
     "expected_classification": "INSUFFICIENT_EVIDENCE",
     "in_production": true,
     "loader_status": "valid",
-    "proposal_defect": "Proposal expected 'SUSPICIOUS' but engine returns 'INSUFFICIENT_EVIDENCE'; fixture expectation follows engine (authoritative).",
+    "proposal_defect": "CH-03 Option B: proposal metadata expected SUSPICIOUS, but the authoritative payload has only two failures before unfamiliar-IP success; RULE-001/003 require >=3, so approved expectation remains INSUFFICIENT_EVIDENCE. See docs/SCENARIO_COVERAGE_MATRIX.md.",
     "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
-    "notes": "Array order is intentionally non-chronological. After timestamp sort only two prior failures remain, so classification is INSUFFICIENT_EVIDENCE via GB-RULE-002."
+    "notes": "Array order is intentionally non-chronological. After timestamp sort, two prior failures do not meet the burst/sequence threshold; GB-RULE-002 applies. Chronology coverage remains required."
   }
 ]

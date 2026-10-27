@@ -6,8 +6,8 @@
 - [x] Deterministic risk and evidence are visible before AI.
 - [x] TF-IDF retrieval has a tested threshold and explicit no-match state.
 - [x] Citation membership and report-context gates protect decisions.
-- [x] One simulation-only decision is recorded per valid report.
-- [x] Unit test suite contains 25 current tests.
+- [x] One simulation-only decision is recorded per valid report and persisted in local SQLite.
+- [x] Unit test suite contains 80 current tests (`python -m unittest discover -s tests -v`).
 - [ ] Browser workflow is manually checked in the target environment.
 - [ ] Live Nebius/NVIDIA model request is verified with authorized credentials.
 - [ ] Public deployment, demo video, and submission materials are verified.

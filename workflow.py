@@ -44,8 +44,14 @@ def build_decision_record(
     report_id: str | None,
     existing_decision: dict[str, Any] | None,
     now: datetime | None = None,
+    evidence_ids: list[str] | None = None,
+    policy_ids: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    """Return a simulated audit record, or None if its decision gate is closed."""
+    """Return a simulated audit record, or None if its decision gate is closed.
+
+    Records include evidence/policy references and status for SQLite persistence
+    (MVP Scope v2.2 §6). Secrets must never be placed on this record.
+    """
     if decision not in {"APPROVED", "REJECTED"}:
         raise ValueError("decision must be APPROVED or REJECTED")
     if not can_record_decision(
@@ -61,4 +67,8 @@ def build_decision_record(
         "outcome": outcome,
         "simulation_only": True,
         "report_id": report_id,
+        "report_context_id": report_context_id,
+        "evidence_ids": list(evidence_ids or []),
+        "policy_ids": list(policy_ids or []),
+        "status": "RECORDED",
     }

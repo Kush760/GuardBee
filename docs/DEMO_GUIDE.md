@@ -8,7 +8,7 @@
 
 ### 0:20-0:50 - Dashboard and investigation
 
-Select `INC-1001 - Suspicious login after repeated failures`. Show the event timeline, the deterministic score of 95/100, HIGH severity, rule hits, and supporting `EVT-*` IDs. State that these facts come from Python rules, not AI.
+Use the classification filter (`SUSPICIOUS` / `NORMAL` / `INSUFFICIENT_EVIDENCE`). Select `INC-1001` under Suspicious. Show classification, investigation priority, score 70/100, severity HIGH (not `None`), rule hits, and `EVT-*` IDs. Switch to Normal (`INC-1003`) and Insufficient (`INC-1002`) to show that normals are not presented as suspicious and insufficient is not confirmed compromise. Facts come from Python rules, not AI.
 
 ### 0:50-1:15 - Policy retrieval
 
@@ -20,8 +20,8 @@ If a verified authorized Nebius configuration is available, request the live ana
 
 ### 1:55-2:30 - Human decision and audit
 
-After a valid report, choose one simulation-only outcome. Show the audit row and locked controls. State that another decision requires a new AI analysis and no real session is revoked.
+After a valid report, choose one simulation-only outcome. Show the audit row and locked controls. State that another decision requires a new AI analysis, no real session is revoked, and audit rows persist in local SQLite across restart.
 
 ### 2:30-2:50 - Safety and close
 
-Summarize: deterministic risk, visible policy evidence, citation-gated AI, human approval, and temporary audit. Point out the scope boundaries and current external verification status honestly.
+Summarize: deterministic risk, visible policy evidence, citation-gated AI, human approval, and SQLite-backed simulated audit. Point out the scope boundaries and current external verification status honestly.

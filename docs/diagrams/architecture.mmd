@@ -9,4 +9,5 @@ flowchart LR
   Retrieval --> Context
   UI --> AI[ai_client.py]
   AI -. optional live request .-> Nebius[Nebius Token Factory / NVIDIA Nemotron]
-  Context --> Audit[(Streamlit session audit)]
+  Context --> Audit[audit_store.py]
+  Audit --> DB[(SQLite audit.db)]

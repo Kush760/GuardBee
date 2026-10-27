@@ -1,15 +1,15 @@
 # Scenario coverage matrix
 
-**Source proposal:** `unnecessary stuff/docs/archive_review/incidents_revised_proposal.json` (from conversation attachment `incidents_revised_proposal.json`)  
-**Production runtime:** `data/incidents.json`  
-**Engine authority:** `engine.analyze_incident` (expectations verified against actual rule output; not trusted from the proposal alone)
+**Authoritative proposal:** conversation upload `incidents_revised_proposal_84c1.json` (SHA-256 `3ec66eaea8035c1444c10ab68b8d8f03f2f8bf7a6654c57e4dc1243e8c2f16ac`; also retained in the Phase 0.5 preflight backup).
+**Production runtime:** `data/incidents.json` (13 valid cores stripped from that proposal in CH-02).
+**Engine authority:** `engine.analyze_incident` (expectations verified against actual rule output; proposal `test_metadata` is not authoritative when it conflicts with coded rules).
 
 ## Proposal defects
 
 | ID | Issue | Resolution |
 | --- | --- | --- |
 | INC-1011 | Empty `ip` is **invalid** for `data_loader` production load | Explicit partition issue; **not** in production. Kept as `tests/fixtures/incomplete_ip_incident.json`. Engine returns `INSUFFICIENT_EVIDENCE` on the raw record. |
-| INC-1014 | Proposal `test_metadata` expected `SUSPICIOUS` with only **two** prior failures; engine needs **≥3** for `GB-RULE-003` | Production keeps proposal event payload (no silent rewrite). Fixture expectation follows engine: `INSUFFICIENT_EVIDENCE` via `GB-RULE-002`. Chronology still covered (array order ≠ timestamp order). Stronger 3-failure chronology remains in `tests/test_engine.py`. |
+| INC-1014 | Proposal `test_metadata` originally expected `SUSPICIOUS` | **CH-03 Option B (approved):** keep engine rules unchanged. The authoritative payload has only **two** failures before an unfamiliar-IP success; `GB-RULE-001` / `GB-RULE-003` require **≥3** qualifying failures. Approved expected result remains `INSUFFICIENT_EVIDENCE` via `GB-RULE-002` (score 0). Production events are preserved (no invented third failure; thresholds not lowered). Chronological ordering is independently required and tested (`test_chronology_fixture_ignores_array_order`; stronger 3-failure chronology in `tests/test_engine.py`). |
 | All rows | `test_metadata`, `scenario_context`, `evidence_context` are **test-only** | Stripped from production `data/incidents.json`. Expectations live in `tests/fixtures/scenario_expectations.json`. |
 
 No scoring/classification logic was changed to force proposal expectations.
@@ -31,12 +31,11 @@ No scoring/classification logic was changed to force proposal expectations.
 | INC-1011 | Missing / empty IP | `INSUFFICIENT_EVIDENCE` | Loader reject; engine incomplete-context path | No | `test_incomplete_ip_loader_and_engine` |
 | INC-1012 | Known-IP burst then success | `SUSPICIOUS` | Known IP is context only | Yes | same |
 | INC-1013 | Same pattern, Finance dept | `SUSPICIOUS` | Score parity with INC-1012; no department bonus | Yes | `test_department_independent_scoring_parity` |
-| INC-1014 | Out-of-order timestamps | `INSUFFICIENT_EVIDENCE` | Timestamp sort applied; only two failures → `GB-RULE-002` | Yes | `test_chronology_fixture_ignores_array_order` |
+| INC-1014 | Out-of-order timestamps | `INSUFFICIENT_EVIDENCE` | Timestamp sort applied; two failures &lt; RULE-001/003 threshold → `GB-RULE-002` (CH-03 Option B) | Yes | `test_chronology_fixture_ignores_array_order` |
 
 ## Files
 
 - Production runtime: `data/incidents.json` (13 valid incidents; no test metadata)
-- Raw proposal archive: `unnecessary stuff/docs/archive_review/incidents_revised_proposal.json`
-- Previous production backup: `unnecessary stuff/data/backups/incidents.json.pre-proposal-integration-*`
+- Authoritative proposal: verified upload / Phase 0.5 backup copy of `incidents_revised_proposal_84c1.json`
 - Fixtures: `tests/fixtures/scenario_incidents.json`, `scenario_expectations.json`, `incomplete_ip_incident.json`
 - Tests: `tests/test_scenario_fixtures.py` (existing `tests/test_engine.py` synthetic cases retained)

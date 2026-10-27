@@ -8,4 +8,5 @@ flowchart LR
   Q --> A[generate_report optional]
   A --> C[validate_report_citations]
   C --> D[workflow decision gate]
-  D --> S[(session_state audit)]
+  D --> S[audit_store.save_decision]
+  S --> DB[(SQLite audit.db)]

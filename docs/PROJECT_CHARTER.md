@@ -18,12 +18,13 @@ Primary users are SOC analysts and small security/IT teams reviewing suspicious-
 - Deterministic risk score, severity, flags, and evidence IDs.
 - Local TF-IDF policy retrieval with a minimum score threshold.
 - Optional live Nemotron explanation through Nebius Token Factory.
-- Current-context ID citation gate, single human decision, and temporary audit history.
+- Current-context ID citation gate, single human decision, and local SQLite simulated audit history (`audit_store.py`).
 
 ## Out of scope
 
-- Real accounts, logs, security integrations, automatic account changes, or durable audit storage.
+- Real accounts, logs, security integrations, automatic account changes, or production-grade compliance audit platforms.
 - Enterprise identity, RBAC, SIEM ingestion, vector databases, custom training, and multi-user workflows.
+- Live account blocking / session revocation (Approve/Reject remain simulation-only).
 
 ## Success criteria
 

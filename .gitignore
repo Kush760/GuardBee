@@ -2,6 +2,10 @@
 .streamlit/secrets.toml
 .env
 
+# Local SQLite audit database (override path with GUARDBEE_AUDIT_DB)
+*.db
+data/audit.db
+
 # Python artifacts
 __pycache__/
 *.py[cod]
@@ -16,3 +20,14 @@ venv/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Local archive of obsolete/historical docs and backups (keep on disk; do not commit)
+unnecessary stuff/
+
+# Local recovery copies / archives (kept on disk for safety; root project is the source of truth)
+GuardBee_MVP_v2.2_recovered/
+GuardBee_MVP_v2.2_recovered.zip
+GuardBee_MVP_v2.2_git_ready.zip
+Guardbee_Final_recovered/
+GuardBee_v2.2_full_backup.bundle
+*.bundle
