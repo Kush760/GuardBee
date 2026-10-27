@@ -2,7 +2,7 @@
 
 ## Completed and verified in the repository
 
-- Deterministic risk scoring, TF-IDF policy retrieval, schema validation, citation gate, session decision lock, and simulation-only audit workflow are implemented.
+- Deterministic risk scoring, TF-IDF policy retrieval, schema validation, citation gate, one-decision lock, and SQLite-backed simulation-only audit workflow are implemented.
 - The repository has 25 unit tests covering its current pure-Python behavior. Run the verification command in `TESTING.md` in the assigned environment before relying on it.
 
 ## In progress / external verification
@@ -21,7 +21,7 @@
 5. **Required Inputs & Expected Outputs:** Existing Streamlit views; deliver a clear dashboard and synthetic-only screenshots.
 6. **Dependencies & Interfaces with Other Modules/Team Members:** Coordinate labels with Workstream A; do not break rendered fields used by Workstreams D/E.
 7. **Acceptance Criteria:** All existing views remain available, safe-state messaging remains visible, and no real data appears.
-8. **Required Automated/Manual Tests:** Run unit suite; manually inspect all three incidents and disabled/locked controls.
+8. **Required Automated/Manual Tests:** Run unit suite; manually inspect representative NORMAL / SUSPICIOUS / INSUFFICIENT incidents and disabled/locked controls.
 9. **Commit & Pull Request Instructions:** Use small descriptive commits; open a PR to `main` for Workstream A review; do not self-merge.
 10. **Proof of Completion Required in PR:** Before/after screenshots, test output, changed-file list, and statement that no secret/data files were added.
 

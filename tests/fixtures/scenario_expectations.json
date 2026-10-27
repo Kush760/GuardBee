@@ -1,0 +1,142 @@
+[
+  {
+    "id": "INC-1001",
+    "scenario_type": "repeated_failures_then_unfamiliar_ip_success",
+    "expected_classification": "SUSPICIOUS",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Several failures from an unfamiliar IP are followed by a success from that same IP within a short period; flag for investigation, not as confirmed compromise."
+  },
+  {
+    "id": "INC-1002",
+    "scenario_type": "single_success_from_unfamiliar_ip",
+    "expected_classification": "INSUFFICIENT_EVIDENCE",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "A successful login from an unfamiliar IP without failures or other suspicious evidence should require review but must not be labelled confirmed suspicious solely because the IP is unfamiliar."
+  },
+  {
+    "id": "INC-1003",
+    "scenario_type": "one_failure_then_success_from_known_ip",
+    "expected_classification": "NORMAL",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "One failed attempt followed by a success from a known IP, with no other suspicious signals, should remain normal activity."
+  },
+  {
+    "id": "INC-1004",
+    "scenario_type": "repeated_successes_from_known_ip",
+    "expected_classification": "NORMAL",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Repeated successful logins from a known IP without failure or other suspicious evidence should not be treated as suspicious just because there are several events."
+  },
+  {
+    "id": "INC-1005",
+    "scenario_type": "two_known_ip_failures_then_success_below_threshold",
+    "expected_classification": "NORMAL",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Two known-IP failures followed by successes stay below the burst threshold and remain normal activity."
+  },
+  {
+    "id": "INC-1006",
+    "scenario_type": "known_ip_not_automatically_safe",
+    "expected_classification": "SUSPICIOUS",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Three known-IP failures then successes are suspicious; known IP is context only and is not an automatic safety guarantee."
+  },
+  {
+    "id": "INC-1007",
+    "scenario_type": "known_successes_plus_unfamiliar_success",
+    "expected_classification": "INSUFFICIENT_EVIDENCE",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Known-IP successes plus one unfamiliar success without supporting failures remain insufficient evidence, not confirmed suspicious."
+  },
+  {
+    "id": "INC-1008",
+    "scenario_type": "burst_then_unfamiliar_successes",
+    "expected_classification": "SUSPICIOUS",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Failure burst followed by unfamiliar successes is suspicious; overlapping rule evidence is scored without runaway double-counting."
+  },
+  {
+    "id": "INC-1009",
+    "scenario_type": "failures_outside_burst_window",
+    "expected_classification": "INSUFFICIENT_EVIDENCE",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Three failures spaced hours apart fall outside the 30-minute burst window and do not alone justify a suspicious classification."
+  },
+  {
+    "id": "INC-1010",
+    "scenario_type": "overlapping_rule_evidence",
+    "expected_classification": "SUSPICIOUS",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Shared failure evidence contributes once via GB-RULE-001 and once via GB-RULE-003; score remains capped at 100."
+  },
+  {
+    "id": "INC-1011",
+    "scenario_type": "incomplete_evidence",
+    "expected_classification": "INSUFFICIENT_EVIDENCE",
+    "in_production": false,
+    "loader_status": "rejected_empty_ip",
+    "proposal_defect": "Empty IP is invalid for production loader; kept in tests/fixtures/incomplete_ip_incident.json. Engine classifies raw record as INSUFFICIENT_EVIDENCE.",
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_incomplete_ip_loader_and_engine",
+    "notes": "Empty source IP is incomplete evidence and must not be treated as an unfamiliar address."
+  },
+  {
+    "id": "INC-1012",
+    "scenario_type": "known_ip_burst_quality_assurance",
+    "expected_classification": "SUSPICIOUS",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Known-IP burst then success in Quality Assurance is suspicious; department does not change the score."
+  },
+  {
+    "id": "INC-1013",
+    "scenario_type": "department_independent_scoring",
+    "expected_classification": "SUSPICIOUS",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Same pattern as INC-1012 in Finance must score identically; Finance alone must not increase risk points."
+  },
+  {
+    "id": "INC-1014",
+    "scenario_type": "input_events_out_of_order",
+    "expected_classification": "INSUFFICIENT_EVIDENCE",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": "CH-03 Option B: proposal metadata expected SUSPICIOUS, but the authoritative payload has only two failures before unfamiliar-IP success; RULE-001/003 require >=3, so approved expectation remains INSUFFICIENT_EVIDENCE. See docs/SCENARIO_COVERAGE_MATRIX.md.",
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Array order is intentionally non-chronological. After timestamp sort, two prior failures do not meet the burst/sequence threshold; GB-RULE-002 applies. Chronology coverage remains required."
+  }
+]
