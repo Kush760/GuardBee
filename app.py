@@ -276,6 +276,13 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [data-testid="stMain"] button[data-testid^="stBaseButton-secondary"] { border-radius: 8px; font-weight: 600; width: 100%; }
 [data-testid="stCaptionContainer"] { color: var(--gb-muted); }
 
+/* Full-report dialog: compact text so the report stays short */
+[data-testid="stDialog"] [data-testid="stVerticalBlock"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stDialog"] [data-testid="stVerticalBlock"] [data-testid="stMarkdownContainer"] li {
+  font-size: 0.86rem; line-height: 1.45; }
+[data-testid="stDialog"] [data-testid="stVerticalBlock"] [data-testid="stMarkdownContainer"] li { margin-bottom: 0.1rem; }
+[data-testid="stDialog"] [data-testid="stVerticalBlockBorderWrapper"] { padding: 0.65rem 0.8rem; }
+
 /* Responsive layout: rows react to the width of the content area (sidebar excluded), not the window. */
 [data-testid="stMainBlockContainer"],
 .st-key-layout-incidents > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {
@@ -848,7 +855,7 @@ def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
             full_report_dialog(incident["id"])
 
 
-@st.dialog("Engine analysis — full report", width="large")
+@st.dialog("Engine analysis — full report", width="medium")
 def full_report_dialog(incident_id: str) -> None:
     """Rule-by-rule breakdown from engine.py; no AI content is shown here."""
     incident, analysis = incident_by_id[incident_id], analyses[incident_id]
