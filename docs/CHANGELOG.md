@@ -38,6 +38,15 @@
 - Audit History: newest-first table with an explicit session-only warning until SQLite persistence exists.
 - UI tests rewritten for the new pages (12 tests). The suite grew from 64 to 68 tests.
 
+## Security Analytics Console UI (`dev`)
+
+- Restyled the UI as a premium SOC console: navy fixed-width sidebar with a shield logo and highlighted active page (`st.navigation`), light blue-white content area, white cards, indigo accent, and red / green / amber status colours. Styling is centralised in `.streamlit/config.toml` and one static stylesheet; Streamlit's deploy toolbar is hidden.
+- Dashboard: five summary cards, a classification/severity overview, a recent-incidents table, and "Open investigation" that switches page and keeps the selection.
+- Security Incidents: search and filter list with a selected-incident summary, header card, four indicator cards, the progress steps, tabs (Timeline, Rules & Evidence, Relevant Policies, AI Analysis), evidence references per rule, a "SIMULATED ACTION — NO REAL ACCOUNT ACTION" decision panel, and a link to Audit History.
+- Audit History: decision and incident filters, newest-first table, record detail, and a link back to the incident.
+- Identifiers render as literal inline code so e-mail addresses are never turned into links; removed the deprecated `use_container_width` argument.
+- UI tests rewritten for page navigation (14 tests). The suite grew from 68 to 70 tests.
+
 ## Documentation and delivery assets
 
 - Added structured project, technical, team, quality, diagram, CI, and shareable-handoff documentation.

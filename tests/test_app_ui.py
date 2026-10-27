@@ -15,15 +15,19 @@ APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 VALID_REPORT = "## Observed facts\nEVT-006 succeeded after failures EVT-002, per POL-001."
 
 
-def open_app(page="Dashboard", incident_id=None):
-    app = AppTest.from_file(str(APP_PATH), default_timeout=30)
-    app.session_state["page"] = page
-    if incident_id:
-        app.session_state["current_incident_id"] = incident_id
-    return app.run()
+def start_app():
+    return AppTest.from_file(str(APP_PATH), default_timeout=30).run()
 
 
-def markdown_text(app):
+def open_incident(incident_id):
+    """Reach an incident the way an analyst does: Dashboard -> Open investigation."""
+    app = start_app()
+    app.selectbox(key="dashboard_pick").set_value(incident_id).run()
+    app.button(key="dashboard_open").click().run()
+    return app
+
+
+def page_text(app):
     return "\n".join(
         [element.value for element in app.markdown]
         + [element.value for element in app.caption]
@@ -31,6 +35,7 @@ def markdown_text(app):
         + [str(element.value) for element in app.success]
         + [str(element.value) for element in app.error]
         + [str(element.value) for element in app.warning]
+        + [str(element.value) for element in app.info]
     )
 
 
@@ -51,45 +56,54 @@ class TestGuardBeeUI(unittest.TestCase):
         self.generate.side_effect = None
         self.generate.return_value = report
 
-    def test_every_page_and_incident_renders(self):
-        for page, incident_id in [
-            ("Dashboard", None),
-            ("Audit History", None),
-            ("Security Incidents", "INC-1001"),
-            ("Security Incidents", "INC-1002"),
-            ("Security Incidents", "INC-1003"),
-        ]:
-            with self.subTest(page=page, incident=incident_id):
-                self.assertFalse(open_app(page, incident_id).exception)
+    def approve_validated_report(self, incident_id="INC-1001"):
+        self.use_report(VALID_REPORT)
+        app = open_incident(incident_id)
+        app.button(key="ai_request_btn").click().run()
+        app.button(key="btn_approve").click().run()
+        return app
 
-    def test_app_renders_no_raw_html(self):
-        self.assertNotIn("unsafe_allow_html", APP_PATH.read_text(encoding="utf-8"))
+    # -- Rendering and navigation -------------------------------------------------
+    def test_dashboard_and_every_incident_render(self):
+        dashboard = start_app()
+        self.assertFalse(dashboard.exception)
+        self.assertEqual(dashboard.title[0].value, "GuardBee")
+        self.assertIn("Demo only", page_text(dashboard))
+        for incident_id in ("INC-1001", "INC-1002", "INC-1003"):
+            with self.subTest(incident=incident_id):
+                app = open_incident(incident_id)
+                self.assertFalse(app.exception)
+                self.assertEqual(app.title[0].value, "Security Incidents")
+                self.assertEqual(app.radio(key="incident_picker").value, incident_id)
 
-    def test_dashboard_open_button_shows_selected_incident(self):
-        app = open_app()
-        app.selectbox(key="dashboard_pick").set_value("INC-1002").run()
-        app.button(key="dashboard_open").click().run()
-        self.assertEqual(app.sidebar.radio(key="page").value, "Security Incidents")
-        self.assertEqual(app.selectbox(key="incident_picker").value, "INC-1002")
-        self.assertIn("INC\\-1002", markdown_text(app))
+    def test_app_injects_no_dynamic_html(self):
+        source = APP_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("unsafe_allow_html", source)
+        self.assertEqual(re.findall(r"st\.html\((.*?)\)", source), ["STYLES"])
 
-    def test_selection_survives_page_changes(self):
-        app = open_app("Security Incidents")
-        app.selectbox(key="incident_picker").set_value("INC-1003").run()
-        app.sidebar.radio(key="page").set_value("Audit History").run()
-        app.sidebar.radio(key="page").set_value("Security Incidents").run()
-        self.assertEqual(app.selectbox(key="incident_picker").value, "INC-1003")
-
-    def test_unclassified_engine_output_is_never_labelled(self):
-        dashboard = open_app()
-        values = metric_values(dashboard)
+    def test_dashboard_counts_come_from_engine(self):
+        values = metric_values(start_app())
+        self.assertEqual(values["Valid incidents"], "3")
         self.assertEqual(values["Suspicious"], "—")
         self.assertEqual(values["Normal"], "—")
-        detail = open_app("Security Incidents", "INC-1003")
-        text = markdown_text(detail)
+        self.assertEqual(values["Insufficient evidence"], "—")
+
+    def test_search_filters_incident_list(self):
+        app = open_incident("INC-1001")
+        app.text_input(key="incident_search").input("unfamiliar login").run()
+        self.assertEqual(app.radio(key="incident_picker").options, ["INC-1002 (40/100) — Unfamiliar login requires review"])
+        self.assertEqual(app.radio(key="incident_picker").value, "INC-1002")
+        app.selectbox(key="incident_filter").set_value("High severity").run()
+        self.assertIn("No incidents match", page_text(app))
+
+    # -- Classification, severity, priority ----------------------------------------
+    def test_unclassified_engine_output_is_never_labelled(self):
+        app = open_incident("INC-1003")
+        text = page_text(app)
         self.assertIn("NOT CLASSIFIED", text)
-        self.assertNotIn("NORMAL]", text)
-        self.assertIn("not proof of compromise", text)
+        self.assertNotIn("green-background[NORMAL]", text)
+        self.assertIn("not a probability", text)
+        self.assertEqual(metric_values(app)["Classification"], "—")
 
     def test_engine_classification_priority_and_unassigned_severity_render(self):
         original = engine.analyze_incident
@@ -103,23 +117,34 @@ class TestGuardBeeUI(unittest.TestCase):
             return dict(original(incident), **overrides[incident["id"]])
 
         with patch.object(engine, "analyze_incident", side_effect=classified):
-            values = metric_values(open_app())
+            values = metric_values(start_app())
             self.assertEqual(values["Suspicious"], "1")
-            self.assertEqual(values["Insufficient Evidence"], "1")
             self.assertEqual(values["Normal"], "1")
-            self.assertEqual(values["Severity not assigned"], "1")
+            self.assertEqual(values["Insufficient Evidence"], "1")
 
-            normal = open_app("Security Incidents", "INC-1003")
-            self.assertIn(":green-background[NORMAL]", markdown_text(normal))
-            self.assertIn("No suspicious pattern was detected by the configured rules", markdown_text(normal))
+            normal = open_incident("INC-1003")
+            self.assertIn(":green-background[NORMAL]", page_text(normal))
+            self.assertIn("No suspicious pattern was detected by the configured rules", page_text(normal))
             self.assertEqual(metric_values(normal)["Severity"], "Not assigned")
 
-            unclear = open_app("Security Incidents", "INC-1002")
-            self.assertIn("not sufficient to classify this activity", markdown_text(unclear))
+            unclear = open_incident("INC-1002")
+            self.assertIn("not sufficient to classify this activity", page_text(unclear))
+            self.assertNotIn("SUSPICIOUS", page_text(unclear))
             self.assertEqual(metric_values(unclear)["Investigation priority"], "Routine review")
 
+    # -- Evidence -------------------------------------------------------------------
+    def test_timeline_is_chronological_and_rules_match_engine(self):
+        app = open_incident("INC-1001")
+        timeline = app.dataframe[0].value
+        self.assertEqual(list(timeline["Time (UTC)"]), sorted(timeline["Time (UTC)"]))
+        rules = app.dataframe[1].value
+        expected = engine.analyze_incident(data_loader.load_incidents(APP_PATH.parent / "data" / "incidents.json")[0])
+        self.assertEqual(list(rules["Rule"]), [hit["rule_id"] for hit in expected["rule_hits"]])
+        self.assertEqual(list(rules["Points"]), [hit["points"] for hit in expected["rule_hits"]])
+        self.assertIn("`GB-RULE-002` → `EVT-006`", page_text(app))
+
     def test_data_text_is_shown_literally(self):
-        hostile = "**bold** [x](https://evil.example) <img src=x onerror=alert(1)>"
+        hostile = "**bold** [x](https://evil.example) <img src=x onerror=alert(1)> admin@evil.example"
         incident = {
             "id": "INC-X",
             "title": hostile,
@@ -132,25 +157,29 @@ class TestGuardBeeUI(unittest.TestCase):
             ],
         }
         with patch.object(data_loader, "load_incidents", return_value=[incident]):
-            app = open_app("Security Incidents", "INC-X")
+            app = open_incident("INC-X")
         self.assertFalse(app.exception)
-        text = markdown_text(app)
-        self.assertNotIn("[x](https", text)
-        self.assertIsNone(re.search(r"(?<!\\)<img", text))
-        self.assertIn("\\<img", text)
+        text = page_text(app)
+        self.assertIn("`" + hostile + "`", text)  # identifiers render as literal inline code
+        outside_code = re.sub(r"`[^`]*`", "", text)  # code spans never render Markdown or HTML
+        self.assertNotIn("[x](https", outside_code)
+        self.assertIsNone(re.search(r"(?<!\\)<img", outside_code))
+        self.assertIn("\\<img", outside_code)
 
-    def test_timeline_is_chronological(self):
-        app = open_app("Security Incidents", "INC-1001")
-        times = list(app.dataframe[1].value["Time (UTC)"])
-        self.assertEqual(times, sorted(times))
+    def test_load_error_shows_no_counts(self):
+        with patch.object(data_loader, "load_incidents", side_effect=data_loader.DataValidationError("broken")):
+            app = start_app()
+        self.assertIn("could not load its synthetic data safely", page_text(app))
+        self.assertEqual(len(app.metric), 0)
 
+    # -- AI report and decisions --------------------------------------------------------
     def test_validated_report_allows_exactly_one_decision(self):
         self.use_report(VALID_REPORT)
-        app = open_app("Security Incidents", "INC-1001")
+        app = open_incident("INC-1001")
         self.assertTrue(app.button(key="btn_approve").disabled)
 
         app.button(key="ai_request_btn").click().run()
-        text = markdown_text(app)
+        text = page_text(app)
         for identifier in ("`EVT-006`", "`EVT-002`", "`POL-001`"):
             self.assertIn(identifier, text)
         self.assertFalse(app.button(key="btn_approve").disabled)
@@ -159,39 +188,48 @@ class TestGuardBeeUI(unittest.TestCase):
         self.assertEqual(len(app.session_state["audit"]), 1)
         self.assertTrue(app.button(key="btn_approve").disabled)
         self.assertTrue(app.button(key="btn_reject").disabled)
-        self.assertIn("APPROVED recorded at", markdown_text(app))
+        self.assertIn("APPROVED recorded at", page_text(app))
 
         app.run()  # a rerender must not add a duplicate audit row
         self.assertEqual(len(app.session_state["audit"]), 1)
 
-        app.sidebar.radio(key="page").set_value("Audit History").run()
+    def test_audit_history_shows_decision_and_links_back(self):
+        app = self.approve_validated_report()
+        app.button(key="open_audit").click().run()
+        self.assertEqual(app.title[0].value, "Audit History")
         history = app.dataframe[0].value
         self.assertEqual(list(history["Incident"]), ["INC-1001"])
-        self.assertEqual(list(history["Decision"]), ["APPROVED"])
+        self.assertEqual(list(history["Decision"]), ["✅ APPROVED"])
+        self.assertIn("SIMULATION ONLY", page_text(app))
+
+        app.button(key="audit_open").click().run()
+        self.assertEqual(app.title[0].value, "Security Incidents")
+        self.assertEqual(app.radio(key="incident_picker").value, "INC-1001")
+        self.assertTrue(app.button(key="btn_approve").disabled)  # the recorded decision still locks it
 
     def test_changing_incident_invalidates_report(self):
         self.use_report(VALID_REPORT)
-        app = open_app("Security Incidents", "INC-1001")
+        app = open_incident("INC-1001")
         app.button(key="ai_request_btn").click().run()
         self.assertIsNotNone(app.session_state["report"])
-        app.selectbox(key="incident_picker").set_value("INC-1002").run()
+        app.radio(key="incident_picker").set_value("INC-1002").run()
         self.assertIsNone(app.session_state["report"])
         self.assertTrue(app.button(key="btn_approve").disabled)
 
     def test_invalid_citations_keep_decision_locked(self):
         self.use_report("EVT-999 per POL-001.")
-        app = open_app("Security Incidents", "INC-1001")
+        app = open_incident("INC-1001")
         app.button(key="ai_request_btn").click().run()
         self.assertIsNone(app.session_state["report"])
-        self.assertIn("EVT\\-999", markdown_text(app))
+        self.assertIn("EVT\\-999", page_text(app))
         self.assertTrue(app.button(key="btn_approve").disabled)
 
     def test_provider_failure_offers_retry_without_fabricating(self):
         self.generate.side_effect = ai_client.AIReportError("Nebius Token Factory did not return a report.")
-        app = open_app("Security Incidents", "INC-1001")
+        app = open_incident("INC-1001")
         app.button(key="ai_request_btn").click().run()
         self.assertIsNone(app.session_state["report"])
-        self.assertIn("did not return a report", markdown_text(app))
+        self.assertIn("did not return a report", page_text(app))
         self.assertTrue(app.button(key="btn_approve").disabled)
 
         self.use_report(VALID_REPORT)

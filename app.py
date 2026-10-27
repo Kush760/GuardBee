@@ -1,10 +1,10 @@
-"""GuardBee Streamlit MVP - synthetic suspicious-login investigation only.
+"""GuardBee Security Analytics Console - synthetic suspicious-login investigation only.
 
-Three native-Streamlit pages: Dashboard, Security Incidents, and Audit History.
-Risk facts come from engine.py, policies from retrieval.py, AI text from
-ai_client.py, and decision gates from workflow.py; this module only presents
-them. Dynamic text is shown in plain-text widgets (tables, metrics) or is
-Markdown-escaped first. No raw HTML is rendered.
+Three native-Streamlit pages (Dashboard, Security Incidents, Audit History) share
+one visual system. Risk facts come from engine.py, policies from retrieval.py,
+AI text from ai_client.py, and decision gates from workflow.py; this module only
+presents them. Data text is shown in plain-text widgets (tables, metrics) or is
+Markdown-escaped first. The only HTML injected is the static stylesheet below.
 """
 
 from __future__ import annotations
@@ -30,9 +30,12 @@ from retrieval import DEFAULT_MIN_SIMILARITY, retrieve_policies
 from workflow import analysis_context_id, build_decision_record, can_record_decision
 
 ROOT = Path(__file__).parent
-st.set_page_config(page_title="GuardBee | Security Decision Copilot", page_icon="🐝", layout="wide")
-
-PAGES = ("Dashboard", "Security Incidents", "Audit History")
+st.set_page_config(
+    page_title="GuardBee | Security Analytics Console",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 # Wording required by the UI specification. The class itself must come from engine.py;
 # the UI never infers one from the score or severity.
@@ -45,9 +48,11 @@ CLASSIFICATIONS = {
     "NORMAL": ("green", "No suspicious pattern was detected by the configured rules in the available events."),
 }
 SEVERITY_COLORS = {"HIGH": "red", "MEDIUM": "orange", "LOW": "blue"}
+DECISION_LABELS = {"APPROVED": "✅ APPROVED", "REJECTED": "⛔ REJECTED"}
 NOT_ASSIGNED = "Not assigned"
+NOT_CLASSIFIED = "Not classified"
 RISK_NOTE = (
-    "The risk score (0–100) and severity estimate investigation risk from synthetic evidence. "
+    "The risk score (0–100) is a deterministic rule-based estimate, not a probability. "
     "A high score is not proof of compromise."
 )
 UNKNOWNS = (
@@ -55,14 +60,74 @@ UNKNOWNS = (
     "Device, browser, and VPN details; they are not present in the data.",
     "Any activity outside this synthetic event set.",
 )
-STEP_MARKS = {"done": ":green[✔]", "active": ":orange[●]", "locked": ":gray[○]", "blocked": ":red[✖]"}
+STEP_MARKS = {"done": ":green[✔]", "active": ":violet[●]", "locked": ":gray[○]", "blocked": ":red[✖]"}
 
-_MARKDOWN_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+\-.!|<>~$:])")
+# Static stylesheet: no data is ever interpolated into it.
+STYLES = """
+<style>
+:root {
+  --gb-sidebar: #0B1220; --gb-sidebar-panel: #172337; --gb-bg: #F4F7FC; --gb-card: #FFFFFF;
+  --gb-text: #14213D; --gb-muted: #64748B; --gb-accent: #4F46E5; --gb-accent-2: #38BDF8;
+  --gb-red: #EF4444; --gb-green: #22C55E; --gb-amber: #F59E0B; --gb-border: #E2E8F0;
+}
+html, body, .stApp { font-family: Inter, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+.stApp { background: var(--gb-bg); }
+[data-testid="stMainBlockContainer"] { padding-top: 2rem; padding-bottom: 3rem; max-width: 1360px; }
+h1, h2, h3, h4 { color: var(--gb-text); letter-spacing: -0.01em; }
+h1 { font-weight: 750 !important; }
+
+/* Sidebar */
+[data-testid="stSidebar"] { background: var(--gb-sidebar); border-right: 1px solid #1E293B; }
+@media (min-width: 992px) { [data-testid="stSidebar"] { min-width: 248px !important; max-width: 248px !important; } }
+[data-testid="stSidebar"] p, [data-testid="stSidebar"] li, [data-testid="stSidebar"] label,
+[data-testid="stSidebar"] span, [data-testid="stSidebar"] small { color: #CBD5E1; }
+[data-testid="stSidebar"] strong { color: #FFFFFF; }
+[data-testid="stSidebarNavLink"] { border-radius: 8px; margin: 2px 0; padding: 0.45rem 0.75rem; }
+[data-testid="stSidebarNavLink"]:hover { background: var(--gb-sidebar-panel); }
+[data-testid="stSidebarNavLink"] span { color: #CBD5E1; font-weight: 500; }
+[data-testid="stSidebarNavLink"][aria-current="page"] { background: var(--gb-accent); }
+[data-testid="stSidebarNavLink"][aria-current="page"] span { color: #FFFFFF; font-weight: 650; }
+[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stSidebar"] .gb-sidebar-card { background: var(--gb-sidebar-panel); border-color: #26344D !important; }
+[data-testid="stSidebar"] hr { border-color: #1E293B; }
+
+/* Cards */
+[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"] {
+  background: var(--gb-card); border: 1px solid var(--gb-border) !important; border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(20, 33, 61, 0.04), 0 4px 16px rgba(20, 33, 61, 0.04);
+}
+[data-testid="stMetricLabel"] p { color: var(--gb-muted); font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em; }
+[data-testid="stMetricValue"] { color: var(--gb-text); font-weight: 750; font-size: clamp(1.15rem, 1.6vw, 1.7rem); }
+[data-testid="stMetricLabel"] div, [data-testid="stMetricLabel"] p {
+  white-space: normal !important; word-break: keep-all; overflow-wrap: normal; line-height: 1.3; }
+
+/* Tabs, expanders, tables, buttons */
+[data-testid="stTabs"] button[role="tab"] p { font-weight: 600; font-size: 0.95rem; }
+[data-testid="stTabs"] [data-testid="stMarkdownContainer"] h1,
+[data-testid="stTabs"] [data-testid="stMarkdownContainer"] h2 { font-size: 1.2rem; padding-top: 0.6rem; }
+[data-testid="stTabs"] [data-testid="stMarkdownContainer"] h3 { font-size: 1.05rem; padding-top: 0.4rem; }
+[data-testid="stExpander"] details { background: var(--gb-card); border-radius: 10px; border-color: var(--gb-border); }
+[data-testid="stDataFrame"] { border-radius: 10px; }
+[data-testid="stMain"] [data-testid="stElementContainer"]:has(> [data-testid="stButton"]),
+[data-testid="stMain"] [data-testid="stButton"] { width: 100% !important; }
+[data-testid="stMain"] button[data-testid^="stBaseButton-primary"],
+[data-testid="stMain"] button[data-testid^="stBaseButton-secondary"] { border-radius: 8px; font-weight: 600; width: 100%; }
+[data-testid="stCaptionContainer"] { color: var(--gb-muted); }
+</style>
+"""
+
+_MARKDOWN_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+\-.!|<>~$:@])")
 
 
 def md(value: Any) -> str:
     """Escape Markdown so data text is always shown literally."""
     return _MARKDOWN_SPECIAL.sub(r"\\\1", str(value))
+
+
+def code(value: Any) -> str:
+    """Show an identifier (account, IP, ID) literally as inline code; never a link."""
+    return "`" + str(value).replace("`", "'") + "`"
 
 
 # ---------------------------------------------------------------------------
@@ -110,15 +175,16 @@ def reset_investigation_state(incident_id: str) -> None:
         clear_report_state()
 
 
-def open_incident(incident_id: str) -> None:
-    """Button callback: show one incident on the Security Incidents page."""
-    st.session_state.page = "Security Incidents"
-    st.session_state.incident_filter = "All"
-    st.session_state.current_incident_id = incident_id
-
-
 def sync_incident_picker() -> None:
     st.session_state.current_incident_id = st.session_state.incident_picker
+
+
+def go_to_incident(incident_id: str) -> None:
+    """Open one incident on the Security Incidents page with its filters cleared."""
+    st.session_state.current_incident_id = incident_id
+    st.session_state.incident_search = ""
+    st.session_state.incident_filter = "All"
+    st.switch_page(INCIDENTS_PAGE)
 
 
 def audit_decision(
@@ -151,7 +217,7 @@ def run_ai_analysis(
     """Request a report and keep it only if its citations validate; never fabricate one."""
     clear_report_state()
     try:
-        with st.spinner("Calling Nebius Token Factory. GuardBee does not fabricate AI reports..."):
+        with st.spinner("Generating AI report via Nebius Token Factory. GuardBee never fabricates reports..."):
             report = generate_report(read_api_key(), incident, analysis, matched_policies, model=read_model())
         usable, reason = validate_report_citations(
             report,
@@ -180,62 +246,146 @@ def classification_of(analysis: dict[str, Any]) -> str | None:
 
 def classification_text(analysis: dict[str, Any]) -> str:
     value = classification_of(analysis)
-    return value.replace("_", " ") if value else "Not classified"
+    return value.replace("_", " ") if value else NOT_CLASSIFIED
+
+
+def classification_badge(analysis: dict[str, Any]) -> str:
+    value = classification_of(analysis)
+    if not value:
+        return f":gray-background[{NOT_CLASSIFIED.upper()}]"
+    return f":{CLASSIFICATIONS[value][0]}-background[{value.replace('_', ' ')}]"
 
 
 def severity_text(analysis: dict[str, Any]) -> str:
     return analysis.get("severity") or NOT_ASSIGNED
 
 
+def severity_badge(analysis: dict[str, Any]) -> str:
+    severity = analysis.get("severity")
+    if severity in SEVERITY_COLORS:
+        return f":{SEVERITY_COLORS[severity]}-background[{severity}]"
+    return f":gray-background[{md(severity_text(analysis))}]"
+
+
 def priority_text(analysis: dict[str, Any]) -> str:
     return analysis.get("investigation_priority") or "Not provided"
 
 
-def severity_markdown(analysis: dict[str, Any]) -> str:
-    severity = analysis.get("severity")
-    if severity in SEVERITY_COLORS:
-        return f":{SEVERITY_COLORS[severity]}-background[{severity}]"
-    return md(severity_text(analysis))
-
-
-def overview_rows(incidents: list[dict[str, Any]], analyses: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        {
-            "Incident": incident["id"],
-            "Title": incident["title"],
-            "Classification": classification_text(analyses[incident["id"]]),
-            "Risk score": analyses[incident["id"]]["risk_score"],
-            "Severity": severity_text(analyses[incident["id"]]),
-            "Investigation priority": priority_text(analyses[incident["id"]]),
-            "Events": len(incident["events"]),
-        }
-        for incident in incidents
-    ]
-
-
-OVERVIEW_COLUMNS = {
-    "Risk score": st.column_config.ProgressColumn(
-        "Risk score", min_value=0, max_value=100, format="%d", help=RISK_NOTE
-    ),
-}
+def short_text(value: str) -> str:
+    """Compact form for cards and tables; captions explain what a dash means."""
+    return "—" if value in (NOT_CLASSIFIED, "Not provided") else value
 
 
 def event_time(event: dict[str, Any]) -> datetime:
     return datetime.fromisoformat(event["time_utc"].replace("Z", "+00:00"))
 
 
+def latest_event_time(incident: dict[str, Any]) -> str:
+    return max(incident["events"], key=event_time)["time_utc"]
+
+
+# ---------------------------------------------------------------------------
+# Reusable components
+# ---------------------------------------------------------------------------
+def page_header(title: str, subtitle: str, description: str) -> None:
+    st.title(title)
+    st.markdown(f"**{subtitle}**")
+    st.caption(description)
+
+
+def demo_banner() -> None:
+    st.warning(
+        "**Demo only — simulated environment.** Synthetic login incidents from a static JSON file. "
+        "Not live monitoring; GuardBee never blocks accounts, revokes sessions, or changes any system.",
+        icon="⚠️",
+    )
+
+
+def metric_card(column: Any, label: str, value: Any, caption: str, help_text: str | None = None) -> None:
+    with column.container(border=True):
+        st.metric(label, value, help=help_text)
+        st.caption(caption)
+
+
+def incident_table(incident_list: list[dict[str, Any]], show_latest: bool = True) -> None:
+    st.dataframe(
+        [
+            {
+                "Incident": incident["id"],
+                "Title": incident["title"],
+                "Classification": short_text(classification_text(analyses[incident["id"]])),
+                "Risk score": analyses[incident["id"]]["risk_score"],
+                "Severity": severity_text(analyses[incident["id"]]),
+                "Priority": short_text(priority_text(analyses[incident["id"]])),
+                **({"Latest event (UTC)": latest_event_time(incident)} if show_latest else {}),
+            }
+            for incident in incident_list
+        ],
+        hide_index=True,
+        column_config={
+            "Incident": st.column_config.TextColumn("Incident", width="small"),
+            "Title": st.column_config.TextColumn("Title", width="medium"),
+            "Classification": st.column_config.TextColumn("Classification", width="small"),
+            "Risk score": st.column_config.ProgressColumn(
+                "Risk score", min_value=0, max_value=100, format="%d", help=RISK_NOTE, width="small"
+            ),
+            "Severity": st.column_config.TextColumn("Severity", width="small"),
+            "Priority": st.column_config.TextColumn("Priority", width="small"),
+            "Latest event (UTC)": st.column_config.TextColumn("Latest event (UTC)", width="medium"),
+        },
+    )
+
+
+def empty_state(message: str, icon: str = "ℹ️") -> None:
+    with st.container(border=True):
+        st.info(message, icon=icon)
+
+
+def render_stepper(slot: Any, steps: list[tuple[str, str, str]]) -> None:
+    with slot:
+        for column, (index, (title, state, detail)) in zip(st.columns(len(steps)), enumerate(steps, 1)):
+            column.markdown(f"{STEP_MARKS[state]} **{index} · {title}**")
+            column.caption(detail)
+
+
+def render_sidebar() -> None:
+    with st.sidebar:
+        st.divider()
+        with st.container(border=True):
+            st.markdown("**⚠️ Demo only**")
+            st.caption(
+                "Synthetic incidents and simulated decisions. No live monitoring and no real account actions."
+            )
+        st.markdown("**AI provider**")
+        if read_api_key():
+            st.caption("🟢 Nebius API key configured")
+        else:
+            st.caption("🟠 No Nebius API key — AI reports will show an error")
+        st.caption(f"Model: {md(read_model())}")
+        st.caption(f"Simulated decisions this session: {len(st.session_state.audit)}")
+
+
 # ---------------------------------------------------------------------------
 # Data
 # ---------------------------------------------------------------------------
 initialize_session()
+st.html(STYLES)
+logo = ROOT / "assets" / "guardbee_logo.svg"
+if logo.exists():
+    st.logo(str(logo), size="large")
 
 try:
-    incidents = load_incidents(ROOT / "data" / "incidents.json")
-    policies = load_policies(ROOT / "data" / "policies.json")
+    with st.spinner("Loading synthetic incidents..."):
+        incidents = load_incidents(ROOT / "data" / "incidents.json")
+        policies = load_policies(ROOT / "data" / "policies.json")
 except DataValidationError as exc:
-    st.title("🐝 GuardBee")
-    st.error("GuardBee could not load its synthetic data safely, so no incidents or counts are shown.")
-    st.caption(f"Fix the data file and reload the app: {md(exc)}")
+    st.title("GuardBee")
+    st.markdown("**Security Analytics Console**")
+    st.error(
+        "GuardBee could not load its synthetic data safely, so no incidents, counts, or audit links are shown.",
+        icon="🚫",
+    )
+    st.caption(f"Validation error: {md(exc)} Fix the data file and reload the app.")
     st.stop()
 
 incident_by_id = {incident["id"]: incident for incident in incidents}
@@ -244,294 +394,372 @@ any_classified = any(classification_of(analysis) for analysis in analyses.values
 if st.session_state.current_incident_id not in incident_by_id:
     st.session_state.current_incident_id = incidents[0]["id"]
 
-# ---------------------------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------------------------
-with st.sidebar:
-    st.title("🐝 GuardBee")
-    st.caption("AI security decision copilot · synthetic demo")
-    page = st.radio("Go to", PAGES, key="page")
-    st.divider()
-    st.markdown("**AI provider**")
-    if read_api_key():
-        st.success("Nebius API key configured", icon="🔑")
-    else:
-        st.warning("No Nebius API key configured. AI explanations will show an error.", icon="🔑")
-    st.caption(f"Model: {md(read_model())}")
-    st.caption(f"Simulated decisions this session: {len(st.session_state.audit)}")
-    st.info(
-        "Demo only: synthetic incidents and simulated decisions. GuardBee does not monitor live systems "
-        "or change any account.",
-        icon="🛡️",
-    )
-
 
 # ---------------------------------------------------------------------------
-# Page A - Dashboard
+# Page 1 - Dashboard
 # ---------------------------------------------------------------------------
 def dashboard_page() -> None:
-    st.title("Dashboard")
-    st.caption(
-        "Overview of the static synthetic dataset in `data/incidents.json`. This is not live monitoring."
+    page_header(
+        "GuardBee",
+        "Security Analytics Console",
+        "Overview of the synthetic login incidents in data/incidents.json, analysed by GuardBee's deterministic "
+        "rules engine. Open an incident to investigate its evidence, policies, and AI report.",
     )
+    demo_banner()
 
-    columns = st.columns(4)
-    columns[0].metric("Valid incidents loaded", len(incidents))
+    cards = st.columns(5)
+    metric_card(cards[0], "Valid incidents", len(incidents), "Loaded and validated")
     if any_classified:
-        for column, key in zip(columns[1:], CLASSIFICATIONS):
+        for column, key, caption in zip(
+            cards[1:4],
+            ("SUSPICIOUS", "NORMAL", "INSUFFICIENT_EVIDENCE"),
+            ("Match a suspicious pattern", "No suspicious pattern found", "Cannot classify either way"),
+        ):
             count = sum(1 for analysis in analyses.values() if classification_of(analysis) == key)
-            column.metric(key.replace("_", " ").title(), count)
+            metric_card(column, key.replace("_", " ").title(), count, caption)
     else:
-        columns[1].metric("Suspicious", "—")
-        columns[2].metric("Insufficient evidence", "—")
-        columns[3].metric("Normal", "—")
-        st.info(
-            "Classification counts are unavailable: `engine.py` does not return a classification yet. "
-            "GuardBee does not infer one from the risk score.",
-            icon="ℹ️",
-        )
-
-    severity_columns = st.columns(4)
-    for column, label in zip(severity_columns, ("HIGH", "MEDIUM", "LOW", None)):
-        count = sum(1 for analysis in analyses.values() if analysis.get("severity") == label)
-        column.metric(f"Severity {label.title() if label else NOT_ASSIGNED.lower()}", count)
-    st.caption(RISK_NOTE)
-    st.caption(
-        "Data validation is fail-closed: every record must pass validation or loading stops. "
-        "Partial processing of valid records is not implemented yet."
+        for column, label in zip(cards[1:4], ("Suspicious", "Normal", "Insufficient evidence")):
+            metric_card(column, label, "—", "Engine does not classify yet")
+    metric_card(
+        cards[4], "Validation", "Passed", "Fail-closed loader: 0 rejected",
+        help_text="Every record must pass validation or loading stops. Partial processing is not implemented yet.",
     )
 
-    st.subheader("Incident overview")
-    st.dataframe(
-        overview_rows(incidents, analyses),
-        hide_index=True,
-        column_config=OVERVIEW_COLUMNS,
-    )
-    pick, action = st.columns([3, 1], vertical_alignment="bottom")
-    chosen = pick.selectbox(
-        "Open an incident",
-        list(incident_by_id),
-        format_func=lambda identifier: f"{identifier} · {incident_by_id[identifier]['title']}",
-        key="dashboard_pick",
-    )
-    action.button("Open in Security Incidents", key="dashboard_open", on_click=open_incident, args=(chosen,))
+    left, right = st.columns([1, 2], gap="medium")
+    with left:
+        with st.container(border=True):
+            st.subheader("Classification overview")
+            if any_classified:
+                for key, (color, wording) in CLASSIFICATIONS.items():
+                    count = sum(1 for analysis in analyses.values() if classification_of(analysis) == key)
+                    st.markdown(f":{color}-background[{key.replace('_', ' ')}] **{count}**")
+                    st.progress(count / len(incidents))
+                    st.caption(wording)
+            else:
+                st.info(
+                    "Classification counts are unavailable: engine.py does not return a classification yet. "
+                    "GuardBee does not infer one from the risk score.",
+                    icon="ℹ️",
+                )
+            st.markdown("**Severity distribution**")
+            for label in ("HIGH", "MEDIUM", "LOW", None):
+                count = sum(1 for analysis in analyses.values() if analysis.get("severity") == label)
+                if label is None and not count:
+                    continue
+                name = label.title() if label else NOT_ASSIGNED
+                st.progress(count / len(incidents), text=f"{name}: {count} of {len(incidents)}")
+            st.caption(RISK_NOTE)
 
-
-# ---------------------------------------------------------------------------
-# Page B - Security Incidents
-# ---------------------------------------------------------------------------
-def render_stepper(slot: Any, steps: list[tuple[str, str, str]]) -> None:
-    with slot:
-        for column, (index, (title, state, detail)) in zip(st.columns(len(steps)), enumerate(steps, 1)):
-            column.markdown(f"{STEP_MARKS[state]} **{index} · {title}**")
-            column.caption(detail)
-
-
-def render_incident(incident: dict[str, Any]) -> None:
-    reset_investigation_state(incident["id"])
-    analysis = analyses[incident["id"]]
-    query = " ".join(
-        [incident["title"], incident["department"], *analysis["flags"], analysis["suggested_action"]]
-    )
-    matched_policies = retrieve_policies(query, policies)
-    current_context_id = analysis_context_id(incident, analysis, matched_policies)
-
-    st.subheader(md(f"{incident['id']} · {incident['title']}"))
-    known_ips = ", ".join(incident.get("known_ips", [])) or "none listed"
-    st.caption(
-        md(f"Account: {incident['account']}  ·  Department: {incident['department']}  ·  Known IPs: {known_ips}")
-    )
-
-    with st.container(border=True):
-        classification = classification_of(analysis)
-        if classification:
-            color, wording = CLASSIFICATIONS[classification]
-            st.markdown(f"**Classification:** :{color}-background[{classification.replace('_', ' ')}]")
-            st.caption(wording)
-        else:
-            st.markdown("**Classification:** :gray-background[NOT CLASSIFIED]")
-            st.caption(
-                "`engine.py` does not provide a classification yet. A low or zero score alone does not "
-                "show that this activity is normal."
+    with right:
+        with st.container(border=True):
+            st.subheader("Recent incidents")
+            st.caption("Newest activity first (by latest event time). Values come directly from the engine analysis.")
+            recent = sorted(incidents, key=lambda incident: latest_event_time(incident), reverse=True)
+            incident_table(recent, show_latest=False)
+            if not any_classified:
+                st.caption("— means the engine does not provide this field yet.")
+            pick, action = st.columns([3, 2], vertical_alignment="bottom")
+            chosen = pick.selectbox(
+                "Select an incident",
+                [incident["id"] for incident in recent],
+                format_func=lambda identifier: f"{identifier} · {incident_by_id[identifier]['title']}",
+                key="dashboard_pick",
             )
+            if action.button("Open investigation →", key="dashboard_open", type="primary"):
+                go_to_incident(chosen)
 
-    metrics = st.columns(4)
-    metrics[0].metric("Risk score", f"{analysis['risk_score']} / 100", help=RISK_NOTE)
-    metrics[1].metric("Severity", severity_text(analysis))
-    metrics[2].metric("Investigation priority", priority_text(analysis))
-    metrics[3].metric("Evidence events", len(analysis["evidence_ids"]))
-    st.caption(RISK_NOTE)
 
-    stepper = st.container(border=True)
+# ---------------------------------------------------------------------------
+# Page 2 - Security Incidents
+# ---------------------------------------------------------------------------
+def render_incident_list() -> str | None:
+    with st.container(border=True):
+        st.markdown("**Incidents**")
+        search = st.text_input(
+            "Search", placeholder="ID, title, account, department", key="incident_search",
+            label_visibility="collapsed",
+        )
+        filters = {"All": None, "High severity": "HIGH", "Medium severity": "MEDIUM", "Low severity": "LOW"}
+        if any_classified:
+            filters.update({key.replace("_", " ").title(): key for key in CLASSIFICATIONS})
+        wanted = filters[st.selectbox("Filter", list(filters), key="incident_filter")]
+        query = search.strip().lower()
+        shown = [
+            incident
+            for incident in incidents
+            if (
+                wanted is None
+                or analyses[incident["id"]].get("severity") == wanted
+                or classification_of(analyses[incident["id"]]) == wanted
+            )
+            and (
+                not query
+                or any(query in str(incident[field]).lower() for field in ("id", "title", "account", "department"))
+            )
+        ]
+        if not shown:
+            st.info("No incidents match the search or filter.")
+            return None
+        shown_ids = [incident["id"] for incident in shown]
+        if st.session_state.current_incident_id not in shown_ids:
+            st.session_state.current_incident_id = shown_ids[0]
+        st.session_state.incident_picker = st.session_state.current_incident_id
+        selected = st.radio(
+            "Select incident",
+            shown_ids,
+            format_func=lambda identifier: (
+                f"{identifier} ({analyses[identifier]['risk_score']}/100) — {incident_by_id[identifier]['title']}"
+            ),
+            key="incident_picker",
+            on_change=sync_incident_picker,
+            label_visibility="collapsed",
+        )
+        st.caption(f"Showing {len(shown)} of {len(incidents)} incidents")
 
-    # -- Deterministic engine results ---------------------------------------
-    st.subheader("Engine analysis")
-    st.caption("Deterministic rules in `engine.py`. No AI is used to establish these results.")
+    analysis = analyses[selected]
+    with st.container(border=True):
+        st.markdown(f"**{md(selected)}**")
+        st.caption(md(incident_by_id[selected]["title"]))
+        st.markdown(f"{classification_badge(analysis)} {severity_badge(analysis)}")
+        st.progress(analysis["risk_score"] / 100, text=f"Risk score {analysis['risk_score']}/100")
+        st.caption(f"Investigation priority: {md(priority_text(analysis))}")
+    return selected
+
+
+def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
     evidence = set(analysis["evidence_ids"])
     known = set(incident.get("known_ips", []))
-    with st.expander(f"Event timeline · {len(incident['events'])} events, oldest first", expanded=True):
+    st.caption("Sorted chronologically by time_utc. Highlighted rows are evidence cited by triggered rules.")
+    st.dataframe(
+        [
+            {
+                "Event": event["id"],
+                "Time (UTC)": event["time_utc"],
+                "Type": "Failed login" if event["type"] == "login_failed" else "Successful login",
+                "IP": event["ip"],
+                "IP status": "Known" if event["ip"] in known else "Unfamiliar",
+                "Country": event.get("country", ""),
+                "Rule evidence": event["id"] in evidence,
+            }
+            for event in sorted(incident["events"], key=event_time)
+        ],
+        hide_index=True,
+    )
+
+
+def render_rules(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
+    if analysis["rule_hits"]:
         st.dataframe(
             [
                 {
-                    "Event": event["id"],
-                    "Time (UTC)": event["time_utc"],
-                    "Type": event["type"],
-                    "IP": event["ip"],
-                    "IP status": "Known" if event["ip"] in known else "Unfamiliar",
-                    "Country": event.get("country", ""),
-                    "Rule evidence": event["id"] in evidence,
+                    "Rule": hit["rule_id"],
+                    "Finding": hit["flag"],
+                    "Points": hit["points"],
+                    "Evidence events": len(hit["evidence_ids"]),
                 }
-                for event in sorted(incident["events"], key=event_time)
+                for hit in analysis["rule_hits"]
             ],
             hide_index=True,
         )
-    with st.expander(f"Triggered rules · {len(analysis['rule_hits'])}", expanded=True):
-        if analysis["rule_hits"]:
-            st.dataframe(
-                [
-                    {
-                        "Rule": hit["rule_id"],
-                        "Finding": hit["flag"],
-                        "Points": hit["points"],
-                        "Evidence events": ", ".join(hit["evidence_ids"]) or "Account context",
-                    }
-                    for hit in analysis["rule_hits"]
-                ],
-                hide_index=True,
-            )
-            total = sum(hit["points"] for hit in analysis["rule_hits"])
-            st.caption(f"Rule points total {total}; the risk score is capped at 100.")
-        else:
-            st.info("No configured rule matched the available events.")
-    with st.expander("Observed facts, interpretation, and unknowns"):
-        events = incident["events"]
-        failed = sum(1 for event in events if event["type"] == "login_failed")
-        unfamiliar = sorted({event["ip"] for event in events if event["ip"] not in known})
-        st.markdown("**Observed in the events**")
+        with st.expander("Evidence references by rule", expanded=True):
+            for hit in analysis["rule_hits"]:
+                references = " ".join(code(event_id) for event_id in hit["evidence_ids"]) or "account context only"
+                st.markdown(f"{code(hit['rule_id'])} → {references}")
+        total = sum(hit["points"] for hit in analysis["rule_hits"])
+        st.caption(f"Rule points total {total}; the risk score is capped at 100.")
+    else:
+        st.info("No configured rule matched the available events.")
+
+    events = incident["events"]
+    known = set(incident.get("known_ips", []))
+    failed = sum(1 for event in events if event["type"] == "login_failed")
+    unfamiliar = sorted({event["ip"] for event in events if event["ip"] not in known})
+    facts, inference, unknowns = st.columns(3, gap="small")
+    with facts.container(border=True):
+        st.markdown("**Observed facts**")
         st.markdown(
             md(
-                f"{failed} failed and {len(events) - failed} successful login events "
+                f"{failed} failed and {len(events) - failed} successful logins "
                 f"from {len({event['ip'] for event in events})} IP address(es)."
             )
         )
-        st.markdown(
-            md(f"IPs not in the known-IP list: {', '.join(unfamiliar)}.")
-            if unfamiliar
-            else "All events came from known IPs."
-        )
+        st.markdown(md(f"Unfamiliar IPs: {', '.join(unfamiliar)}.") if unfamiliar else "All events came from known IPs.")
+    with inference.container(border=True):
         st.markdown("**Engine interpretation**")
         for flag in analysis["flags"] or ["No configured rule matched."]:
             st.markdown(f"- {md(flag)}")
-        st.markdown("**Unknown from this data**")
+        st.caption(md(f"Suggested (simulated) action: {analysis['suggested_action']}"))
+    with unknowns.container(border=True):
+        st.markdown("**Unknowns & limitations**")
         for unknown in UNKNOWNS:
             st.markdown(f"- {md(unknown)}")
 
-    # -- Policies --------------------------------------------------------------
-    st.subheader("Relevant policies")
+
+def render_policies(matched_policies: list[dict[str, Any]]) -> None:
     st.caption(
-        f"Retrieved locally with TF-IDF cosine similarity from `data/policies.json`. "
+        f"Retrieved locally with TF-IDF cosine similarity from data/policies.json. "
         f"Only passages scoring at least {DEFAULT_MIN_SIMILARITY:.2f} are shown."
     )
-    if matched_policies:
-        for index, policy in enumerate(matched_policies):
-            label = f"{policy['id']} · {policy['title']} · similarity {policy['match_score']:.3f}"
-            with st.expander(md(label), expanded=index == 0):
-                st.markdown(md(policy["text"]))
-    else:
+    if not matched_policies:
         st.warning(
-            "No policy passage met the similarity threshold. AI explanation and decisions are unavailable "
+            "No policy passage met the similarity threshold. AI reports and decisions are unavailable "
             "without policy context to cite."
         )
+        return
+    for index, policy in enumerate(matched_policies):
+        label = f"{policy['id']} · {policy['title']} · similarity {policy['match_score']:.3f}"
+        with st.expander(md(label), expanded=index == 0):
+            st.markdown(md(policy["text"]))
 
-    # -- AI explanation ---------------------------------------------------------
-    st.subheader("AI explanation")
-    with st.container(border=True):
-        st.caption(
-            f"AI-generated · NVIDIA Nemotron via Nebius Token Factory · model {md(read_model())}. "
-            "Separate from the deterministic engine results above."
+
+def render_ai_panel(
+    incident: dict[str, Any], analysis: dict[str, Any], matched_policies: list[dict[str, Any]], context_id: str
+) -> None:
+    st.caption(
+        f"✨ AI-generated content · NVIDIA Nemotron via Nebius Token Factory · model {md(read_model())}. "
+        "Separate from the deterministic engine results."
+    )
+    if st.button(
+        "✨ Generate AI Report",
+        type="primary",
+        key="ai_request_btn",
+        disabled=not matched_policies,
+    ):
+        run_ai_analysis(incident, analysis, matched_policies, context_id)
+
+    if st.session_state.report:
+        st.success(md(st.session_state.report_status), icon="✅")
+        cited_events, cited_policies = extract_citation_ids(st.session_state.report)
+        titles = {policy["id"].upper(): policy["title"] for policy in matched_policies}
+        st.markdown("**Validated evidence citations:** " + " ".join(f"`{event_id}`" for event_id in cited_events))
+        st.markdown(
+            "**Validated policy citations:** "
+            + "; ".join(f"`{policy_id}` {md(titles.get(policy_id, ''))}" for policy_id in cited_policies)
         )
-        if st.button(
-            "Generate AI explanation",
-            type="primary",
-            key="ai_request_btn",
-            disabled=not matched_policies,
-        ):
-            run_ai_analysis(incident, analysis, matched_policies, current_context_id)
+        with st.container(border=True):
+            st.markdown(st.session_state.report)
+        st.caption(
+            "Citation checks prove the IDs belong to this incident and its retrieved policies, not that every "
+            "sentence is correct. Treat inferred risk and unknowns as unconfirmed."
+        )
+    elif st.session_state.report_status:
+        st.error(md(st.session_state.report_status), icon="🚫")
+        st.caption(
+            "No report was generated or substituted. Check the API key, network access, account credits, "
+            "and configured model, then retry."
+        )
+        if st.button("↻ Retry AI Report", key="ai_retry_btn", disabled=not matched_policies):
+            run_ai_analysis(incident, analysis, matched_policies, context_id)
+            st.rerun()
+    elif matched_policies:
+        st.info("Generate an AI report to unlock the simulated decision. A Nebius API key is required.")
 
-        if st.session_state.report:
-            st.success(md(st.session_state.report_status), icon="✅")
-            cited_events, cited_policies = extract_citation_ids(st.session_state.report)
-            titles = {policy["id"].upper(): policy["title"] for policy in matched_policies}
-            st.markdown("**Cited evidence:** " + " ".join(f"`{event_id}`" for event_id in cited_events))
-            st.markdown(
-                "**Cited policies:** "
-                + "; ".join(f"`{policy_id}` {md(titles.get(policy_id, ''))}" for policy_id in cited_policies)
-            )
-            st.caption(
-                "Each cited ID was checked against this incident's events and the retrieved policies. "
-                "That does not prove every sentence; treat inferred risk and unknowns as unconfirmed."
-            )
-            with st.container(border=True):
-                st.markdown(st.session_state.report)
-        elif st.session_state.report_status:
-            st.error(md(st.session_state.report_status))
-            st.caption(
-                "No explanation was generated or substituted. Check the API key, network access, account "
-                "credits, and configured model, then retry."
-            )
-            if st.button("Retry AI explanation", key="ai_retry_btn", disabled=not matched_policies):
-                run_ai_analysis(incident, analysis, matched_policies, current_context_id)
-                st.rerun()
-        elif matched_policies:
-            st.info("Generate an AI explanation to unlock the simulated decision. A Nebius API key is required.")
 
-    # -- Simulated decision -----------------------------------------------------------
-    st.subheader("Simulated decision")
+def render_decision_panel(incident: dict[str, Any], analysis: dict[str, Any], context_id: str) -> bool:
     can_decide = can_record_decision(
         st.session_state.report,
         st.session_state.report_context_id,
-        current_context_id,
+        context_id,
         st.session_state.active_report_id,
         st.session_state.decision,
     )
     with st.container(border=True):
-        st.markdown(f"**Proposed simulated action:** {md(analysis['suggested_action'])}")
-        st.caption("Simulation only. GuardBee cannot block accounts, revoke sessions, or change any system.")
+        st.subheader("Analyst decision")
+        st.markdown(":red-background[SIMULATED ACTION — NO REAL ACCOUNT ACTION]")
+        st.markdown(f"**Proposed action:** {md(analysis['suggested_action'])}")
         decision = st.session_state.decision
         if decision:
             st.success(
                 md(f"{decision['decision']} recorded at {decision['time_utc']} (UTC): {decision['outcome']}"),
                 icon="📝",
             )
-            st.caption("A decision is already recorded for this report. Generate a new explanation to decide again.")
+            st.caption("A decision is already recorded for this report. Generate a new report to decide again.")
         elif not st.session_state.report:
-            st.warning("Locked: generate a citation-validated AI explanation first.", icon="🔒")
+            st.warning("Locked until a citation-validated AI report is available for this incident.", icon="🔒")
         elif not can_decide:
             st.warning(
-                "Locked: the AI report belongs to a different incident or analysis context. "
-                "Generate a new explanation.",
+                "Locked: the AI report belongs to a different incident or analysis context. Generate a new report.",
                 icon="🔒",
             )
         approve, reject = st.columns(2)
-        for column, label, key, verdict, outcome in (
+        for column, label, key, verdict, outcome, kind in (
             (approve, "Approve (simulated)", "btn_approve", "APPROVED",
-             "Simulated session-revocation response recorded; no external system was changed."),
+             "Simulated session-revocation response recorded; no external system was changed.", "primary"),
             (reject, "Reject (simulated)", "btn_reject", "REJECTED",
-             "No action taken; recommendation rejected by demo analyst."),
+             "No action taken; recommendation rejected by demo analyst.", "secondary"),
         ):
-            if column.button(label, key=key, disabled=not can_decide, use_container_width=True):
-                if audit_decision(incident, verdict, outcome, current_context_id):
+            if column.button(label, key=key, type=kind, disabled=not can_decide):
+                if audit_decision(incident, verdict, outcome, context_id):
                     st.rerun()
                 st.error("The decision was not recorded: the report is no longer valid for this context.")
+        if decision and st.button("View in Audit History →", key="open_audit"):
+            st.switch_page(AUDIT_PAGE)
+    return can_decide
+
+
+def render_investigation(incident: dict[str, Any]) -> None:
+    reset_investigation_state(incident["id"])
+    analysis = analyses[incident["id"]]
+    query = " ".join(
+        [incident["title"], incident["department"], *analysis["flags"], analysis["suggested_action"]]
+    )
+    matched_policies = retrieve_policies(query, policies)
+    context_id = analysis_context_id(incident, analysis, matched_policies)
+
+    with st.container(border=True):
+        st.subheader(md(incident["title"]))
+        known_ips = ", ".join(incident.get("known_ips", [])) or "none listed"
+        st.caption(
+            f"{code(incident['id'])}  ·  Account {code(incident['account'])}  ·  "
+            f"Department {md(incident['department'])}  ·  Known IPs {code(known_ips)}"
+        )
+        classification = classification_of(analysis)
+        if classification:
+            st.markdown(f"{classification_badge(analysis)} {CLASSIFICATIONS[classification][1]}")
+        else:
+            st.markdown(
+                f"{classification_badge(analysis)} engine.py does not provide a classification yet. "
+                "A low or zero score alone does not show that this activity is normal."
+            )
+
+    cards = st.columns(4)
+    metric_card(
+        cards[0], "Classification", short_text(classification_text(analysis)),
+        "From engine.py" if classification_of(analysis) else "Not classified by the engine yet",
+        help_text=classification_text(analysis),
+    )
+    metric_card(cards[1], "Risk score", f"{analysis['risk_score']} / 100", "Rule-based, not a probability", RISK_NOTE)
+    metric_card(cards[2], "Severity", severity_text(analysis), "Derived by engine.py")
+    metric_card(
+        cards[3], "Investigation priority", short_text(priority_text(analysis)),
+        "Backend-provided" if analysis.get("investigation_priority") else "Not provided by the backend yet",
+        help_text=priority_text(analysis),
+    )
+
+    stepper = st.container(border=True)
+
+    timeline_tab, rules_tab, policy_tab, ai_tab = st.tabs(
+        ["🕒 Timeline", "📐 Rules & Evidence", "📚 Relevant Policies", "✨ AI Analysis"]
+    )
+    with timeline_tab:
+        render_timeline(incident, analysis)
+    with rules_tab:
+        render_rules(incident, analysis)
+    with policy_tab:
+        render_policies(matched_policies)
+    with ai_tab:
+        render_ai_panel(incident, analysis, matched_policies, context_id)
+
+    can_decide = render_decision_panel(incident, analysis, context_id)
 
     if st.session_state.report:
-        ai_step = ("AI explanation", "done", "Citations validated")
+        ai_step = ("AI report", "done", "Citations validated")
     elif st.session_state.report_status:
-        ai_step = ("AI explanation", "blocked", "Not usable")
+        ai_step = ("AI report", "blocked", "Not usable")
     elif matched_policies:
-        ai_step = ("AI explanation", "active", "Ready to generate")
+        ai_step = ("AI report", "active", "Ready to generate")
     else:
-        ai_step = ("AI explanation", "locked", "Needs policy context")
+        ai_step = ("AI report", "locked", "Needs policy context")
     if st.session_state.decision:
         decision_step = ("Decision", "done", st.session_state.decision["decision"].title())
     elif can_decide:
@@ -555,76 +783,97 @@ def render_incident(incident: dict[str, Any]) -> None:
 
 
 def incidents_page() -> None:
-    st.title("Security Incidents")
-    st.caption(RISK_NOTE)
-
-    filters = {"All": None, "High": "HIGH", "Medium": "MEDIUM", "Low": "LOW"}
-    if any_classified:
-        filters.update({key.replace("_", " ").title(): key for key in CLASSIFICATIONS})
-    choice = st.radio("Filter", list(filters), horizontal=True, key="incident_filter")
-    wanted = filters[choice]
-    shown = [
-        incident
-        for incident in incidents
-        if wanted is None
-        or analyses[incident["id"]].get("severity") == wanted
-        or classification_of(analyses[incident["id"]]) == wanted
-    ]
-    if not shown:
-        st.info("No incidents match this filter.")
-        return
-    st.dataframe(overview_rows(shown, analyses), hide_index=True, column_config=OVERVIEW_COLUMNS)
-
-    shown_ids = [incident["id"] for incident in shown]
-    if st.session_state.current_incident_id not in shown_ids:
-        st.session_state.current_incident_id = shown_ids[0]
-    st.session_state.incident_picker = st.session_state.current_incident_id
-    selected = st.selectbox(
-        "Investigate incident",
-        shown_ids,
-        format_func=lambda identifier: (
-            f"{identifier} · {incident_by_id[identifier]['title']} · score {analyses[identifier]['risk_score']}"
-        ),
-        key="incident_picker",
-        on_change=sync_incident_picker,
+    page_header(
+        "Security Incidents",
+        "Investigation workspace",
+        "Select an incident to review its timeline, triggered rules, relevant policies, and AI report, "
+        "then record one simulated decision.",
     )
-    st.divider()
-    render_incident(incident_by_id[selected])
+    left, main = st.columns([1.25, 3], gap="medium")
+    with left:
+        selected = render_incident_list()
+    with main:
+        if selected:
+            render_investigation(incident_by_id[selected])
+        else:
+            empty_state("Adjust the search or filter to select an incident.")
 
 
 # ---------------------------------------------------------------------------
-# Page C - Audit History
+# Page 3 - Audit History
 # ---------------------------------------------------------------------------
 def audit_page() -> None:
-    st.title("Audit History")
+    page_header(
+        "Audit History",
+        "Simulated analyst decisions",
+        "Every Approve or Reject decision recorded against a citation-validated AI report, newest first.",
+    )
+    st.markdown(":red-background[SIMULATION ONLY — NO REAL ACCOUNT ACTIONS WERE TAKEN]")
     st.warning(
-        "Session-only storage: persistent SQLite audit storage is not implemented yet, so these records "
+        "Session-only storage: the persistent SQLite audit store is not implemented yet, so these records "
         "disappear when the browser session ends or the app restarts.",
         icon="⚠️",
     )
-    records = st.session_state.audit
+    records = list(reversed(st.session_state.audit))
     if not records:
-        st.info("No simulated decisions have been recorded in this session yet.")
+        empty_state(
+            "No simulated decisions have been recorded in this session yet. Open Security Incidents, "
+            "generate an AI report, and approve or reject it.",
+            icon="📭",
+        )
         return
-    st.dataframe(
-        [
-            {
-                "Time (UTC)": record["time_utc"],
-                "Incident": record["incident_id"],
-                "Decision": record["decision"],
-                "Simulation only": record["simulation_only"],
-                "Actor": record["actor"],
-                "Outcome": record["outcome"],
-                "Report reference": record["report_id"],
-            }
-            for record in reversed(records)
-        ],
-        hide_index=True,
-    )
-    decided = list(dict.fromkeys(record["incident_id"] for record in reversed(records)))
-    pick, action = st.columns([3, 1], vertical_alignment="bottom")
-    chosen = pick.selectbox("Open an incident from the history", decided, key="audit_pick")
-    action.button("Open in Security Incidents", key="audit_open", on_click=open_incident, args=(chosen,))
+
+    with st.container(border=True):
+        filters = st.columns(2)
+        decision_filter = filters[0].selectbox("Decision", ["All", "APPROVED", "REJECTED"], key="audit_decision")
+        incident_filter = filters[1].selectbox(
+            "Incident", ["All", *dict.fromkeys(record["incident_id"] for record in records)], key="audit_incident"
+        )
+        shown = [
+            record
+            for record in records
+            if decision_filter in ("All", record["decision"]) and incident_filter in ("All", record["incident_id"])
+        ]
+        st.dataframe(
+            [
+                {
+                    "Time (UTC)": record["time_utc"],
+                    "Incident": record["incident_id"],
+                    "Decision": DECISION_LABELS.get(record["decision"], record["decision"]),
+                    "Simulation only": record["simulation_only"],
+                    "Actor": record["actor"],
+                    "Report reference": record["report_id"],
+                }
+                for record in shown
+            ],
+            hide_index=True,
+        )
+        st.caption(f"Showing {len(shown)} of {len(records)} record(s).")
+
+    if shown:
+        with st.container(border=True):
+            st.subheader("Record detail")
+            index = st.selectbox(
+                "Record",
+                range(len(shown)),
+                format_func=lambda i: f"{shown[i]['time_utc']} · {shown[i]['incident_id']} · {shown[i]['decision']}",
+                key="audit_record",
+            )
+            record = shown[index]
+            details = st.columns(3)
+            details[0].markdown(f"**Decision**  \n{DECISION_LABELS.get(record['decision'], md(record['decision']))}")
+            details[1].markdown(f"**Incident**  \n{md(record['incident_id'])}")
+            details[2].markdown(f"**Time (UTC)**  \n{md(record['time_utc'])}")
+            st.markdown(f"**Outcome:** {md(record['outcome'])}")
+            st.caption(md(f"Report reference: {record['report_id']}"))
+            if record["incident_id"] in incident_by_id and st.button("Open incident →", key="audit_open"):
+                go_to_incident(record["incident_id"])
 
 
-{"Dashboard": dashboard_page, "Security Incidents": incidents_page, "Audit History": audit_page}[page]()
+DASHBOARD_PAGE = st.Page(dashboard_page, title="Dashboard", icon=":material/dashboard:", default=True)
+INCIDENTS_PAGE = st.Page(incidents_page, title="Security Incidents", icon=":material/shield:", url_path="incidents")
+AUDIT_PAGE = st.Page(audit_page, title="Audit History", icon=":material/history:", url_path="audit")
+
+navigation = st.navigation([DASHBOARD_PAGE, INCIDENTS_PAGE, AUDIT_PAGE], position="sidebar")
+render_sidebar()
+navigation.run()
