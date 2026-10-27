@@ -57,6 +57,7 @@
 - Sidebar: navigation stays at the top while the Demo only and AI provider cards are pinned to the bottom (no divider gap), the AI provider details sit in their own card with a status dot, a small footer was added, and the sidebar scrollbar is slim and translucent.
 - Dashboard header logo is now an SVG with real text for "GuardBee" and "Security Analytics Console" (the JPEG-derived PNG made the small subtitle blurry); only the bee shield remains a bitmap.
 - Removed the red Demo Only card from the dashboard header; the sidebar's Demo only card, visible on every page, keeps the disclaimer.
+- Removed the dashboard header (logo and tagline); the dashboard now opens on the KPI cards and the sidebar carries the GuardBee logo. The unused header logo asset was deleted.
 
 ## Documentation and delivery assets
 

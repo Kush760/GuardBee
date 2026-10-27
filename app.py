@@ -565,8 +565,6 @@ def overview_donut(groups: list[tuple[str, int, str]]) -> None:
 
 
 def dashboard_page() -> None:
-    st.image(str(ASSETS / "guardbee_logo_full.svg"), width=340)
-    st.caption("**AI-Powered Security Analysis for Safer Access**")
 
     # Row 1: KPI cards
     cards = st.columns(5, gap="small")
