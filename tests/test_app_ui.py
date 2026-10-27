@@ -105,6 +105,14 @@ class TestGuardBeeUI(unittest.TestCase):
         app.selectbox(key="incident_filter").set_value("High severity").run()
         self.assertIn("No incidents match", page_text(app))
 
+    def test_full_report_dialog_shows_engine_rules(self):
+        app = open_incident("INC-1001")
+        app.button(key="engine_full_report").click().run()
+        self.assertFalse(app.exception)
+        rules = [frame.value for frame in app.dataframe if "Rule" in frame.value.columns]
+        self.assertTrue(any(list(frame["Rule"])[:1] == ["GB-RULE-001"] for frame in rules))
+        self.assertGreaterEqual(len(rules), 2)  # the Rules tab table plus the dialog's own copy
+
     # -- Classification, severity, priority ----------------------------------------
     def test_unclassified_engine_output_is_never_labelled(self):
         app = open_incident("INC-1003")

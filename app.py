@@ -143,13 +143,54 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 .st-key-incident_picker [data-testid="stRadioOption"] p { font-size: 0.88rem; }
 .st-key-incident_picker [data-testid="stCaptionContainer"] p { font-size: 0.78rem; }
 [class*="st-key-inc-"] h3 { font-size: 1.25rem !important; padding: 0 !important; }
-[class*="st-key-tl-"] { border-bottom: 1px dashed #E2E8F0; padding-bottom: 0.2rem; }
 [class*="st-key-tl-"] p { font-size: 0.88rem; margin-bottom: 0; }
+[class*="st-key-tl-"] [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
 .st-key-inc-engine li { margin-bottom: 0.15rem; font-size: 0.9rem; }
 .st-key-inc-engine li p { margin: 0; }
 .st-key-inc-basic [data-testid="stCaptionContainer"] p { margin-bottom: 0; font-size: 0.75rem; }
 .st-key-inc-engine { background: #F8FAFF !important; }
 .st-key-inc-policies, .st-key-inc-decision { min-height: 190px; }
+
+/* Security Incidents: compact cards, icon chips, connected timeline, hover feedback */
+[class*="-kpi-c-"] { min-height: 0 !important; padding: 0.75rem 0.9rem 0.75rem 3.7rem !important; }
+[class*="-kpi-c-"] [class*="st-key-kpi-icon-"] { top: 50%; transform: translateY(-50%); }
+[class*="-kpi-c-"] [data-testid="stMetricValue"] { font-size: 1.3rem; }
+.st-key-incident_picker [data-testid="stRadioOption"] p .stMarkdownColoredText:first-child,
+.st-key-inc-header h3 .stMarkdownColoredText:first-child {
+  display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
+  background: color-mix(in srgb, currentColor 14%, white); }
+.st-key-incident_picker [data-testid="stRadioOption"] p .stMarkdownColoredText:first-child {
+  width: 1.7rem; height: 1.7rem; border-radius: 8px; margin-right: 0.35rem; }
+.st-key-inc-header h3 .stMarkdownColoredText:first-child { width: 2.5rem; height: 2.5rem; border-radius: 12px;
+  margin-right: 0.6rem; }
+.st-key-inc-header h3 span[role="img"] { font-size: 1.5rem; }
+.st-key-incident_picker [role="radiogroup"] > div { transition: transform .15s ease, box-shadow .15s ease,
+  border-color .15s ease, background .15s ease; }
+.st-key-incident_picker [role="radiogroup"] > div:hover { transform: translateX(3px);
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.10); }
+[data-testid="stMain"] [class*="st-key-tone-"], [data-testid="stMain"] [class*="st-key-inc-"],
+[data-testid="stMain"] [class*="st-key-dash-"] { transition: transform .18s ease, box-shadow .18s ease; }
+[data-testid="stMain"] [class*="st-key-tone-"]:hover { transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(20, 33, 61, 0.08); }
+[data-testid="stMain"] [class*="st-key-inc-"]:hover, [data-testid="stMain"] [class*="st-key-dash-"]:hover {
+  box-shadow: 0 10px 24px rgba(20, 33, 61, 0.06); }
+[data-testid="stMain"] button { transition: transform .15s ease, box-shadow .15s ease, filter .15s ease; }
+[data-testid="stMain"] button:not(:disabled):hover { transform: translateY(-1px); }
+[data-testid="stMain"] .st-key-ai_request_btn button, [data-testid="stMain"] .st-key-engine_full_report button {
+  background: #EEF2FF; color: var(--gb-accent); border: 1px solid #C7D2FE; }
+[data-testid="stMain"] .st-key-ai_request_btn button:not(:disabled):hover,
+[data-testid="stMain"] .st-key-engine_full_report button:hover { background: #E0E7FF; border-color: #A5B4FC; }
+[data-testid="stMain"] .st-key-btn_approve button:disabled { background: #16A34A; color: #FFFFFF; opacity: 0.35; }
+[data-testid="stMain"] .st-key-btn_reject button:disabled { background: #DC2626; color: #FFFFFF; opacity: 0.35; }
+.st-key-timeline { gap: 0 !important; }
+[class*="st-key-tl-"] { border-radius: 8px; padding: 0.5rem 0.4rem !important; }
+[class*="st-key-tl-"]:hover { background: #EEF2FF; }
+[class*="st-key-tl-"] [data-testid="stColumn"]:nth-child(2) { position: relative; align-self: stretch;
+  display: flex; align-items: center; justify-content: center; }
+[class*="st-key-tl-"] [data-testid="stColumn"]:nth-child(2)::before { content: ""; position: absolute;
+  left: 50%; top: -0.5rem; bottom: -0.5rem; width: 2px; margin-left: -1px; background: #E2E8F0; }
+[class*="st-key-tl-"] [data-testid="stColumn"]:nth-child(2) span[role="img"] { position: relative; z-index: 1;
+  background: var(--gb-bg); border-radius: 50%; font-size: 1.1rem; }
 
 /* Sidebar */
 [data-testid="stSidebar"] {
@@ -473,13 +514,18 @@ def percent(count: int) -> str:
 
 
 def kpi_card(
-    column: Any, label: str, value: Any, caption: str, tone: str, icon: str, help_text: str | None = None
+    column: Any, label: str, value: Any, caption: str, tone: str, icon: str, help_text: str | None = None,
+    compact: bool = False,
 ) -> None:
-    with card(column, f"tone-{tone}-kpi-{slug(label)}"):
+    """Status card with a round icon; compact cards fold the caption into the tooltip."""
+    with card(column, f"tone-{tone}-kpi-{'c-' if compact else ''}{slug(label)}"):
         with keyed(st, f"kpi-icon-{tone}-{slug(label)}"):
             st.markdown(f":material/{icon}:")
-        st.metric(label, value, help=help_text)
-        st.caption(caption)
+        if compact:
+            st.metric(label, value, help=f"{caption}. {help_text}" if help_text else caption)
+        else:
+            st.metric(label, value, help=help_text)
+            st.caption(caption)
 
 
 def overview_donut(groups: list[tuple[str, int, str]]) -> None:
@@ -649,7 +695,7 @@ def render_incident_list(shown: list[dict[str, Any]]) -> str | None:
             "Select incident",
             shown_ids,
             format_func=lambda identifier: (
-                f"{tone_icon(analyses[identifier])} **{identifier}** · {md(incident_by_id[identifier]['title'])}"
+                f"{tone_icon(analyses[identifier])} **{identifier}**  \n{md(incident_by_id[identifier]['title'])}"
             ),
             captions=[
                 f"{classification_badge(analyses[identifier])} · {analyses[identifier]['risk_score']} · "
@@ -689,13 +735,13 @@ def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
     events_column, engine_column = st.columns([3, 2], gap="medium")
     with events_column:
         st.caption("Chronological by time_utc. Tagged events are evidence cited by triggered rules.")
+        timeline = keyed(st, "timeline")
         for event in reversed(ordered):
             failed = event["type"] == "login_failed"
-            with keyed(st, f"tl-{slug(event['id'])}"):
+            with keyed(timeline, f"tl-{slug(event['id'])}"):
                 when, dot, what = st.columns([1.2, 0.3, 4.5], vertical_alignment="center")
                 stamp = event_time(event)
-                when.markdown(f"**{stamp:%H:%M}**")
-                when.caption(f"{stamp:%b %d}")
+                when.markdown(f"**{stamp:%H:%M}**  \n:gray[{stamp:%b %d}]")
                 dot.markdown(f":{'red' if failed else 'green'}[:material/radio_button_checked:]")
                 place = "known IP" if event["ip"] in known else "unfamiliar IP"
                 tag = " :violet-background[evidence]" if event["id"] in evidence else ""
@@ -724,7 +770,21 @@ def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
         for flag in analysis["flags"] or ["No configured rule matched the available events."]:
             st.markdown(f"- {md(flag)}")
         st.caption(md(f"Suggested (simulated) action: {analysis['suggested_action']}"))
-        st.caption("Rule-based findings, not proof of compromise. See Rules & Evidence for the points behind them.")
+        st.caption("Rule-based findings and score: not a probability and not proof of compromise.")
+        if st.button("View Full Report", key="engine_full_report", icon=":material/description:"):
+            full_report_dialog(incident["id"])
+
+
+@st.dialog("Engine analysis — full report", width="large")
+def full_report_dialog(incident_id: str) -> None:
+    """Rule-by-rule breakdown from engine.py; no AI content is shown here."""
+    incident, analysis = incident_by_id[incident_id], analyses[incident_id]
+    st.markdown(
+        f"{tone_icon(analysis)} **{md(incident_id)}** · {md(incident['title'])}  \n"
+        f"Risk score **{analysis['risk_score']} / 100** · Severity {severity_badge(analysis)}"
+    )
+    render_rules(incident, analysis)
+    st.caption(RISK_NOTE)
 
 
 def render_rules(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
@@ -891,7 +951,7 @@ def render_investigation(incident: dict[str, Any]) -> None:
             st.markdown(f"### {tone_icon(analysis)} {md(incident['id'])}")
             st.markdown(f"{classification_badge(analysis)} {md(incident['title'])}")
         if action.button(
-            "✨ Request AI Report", key="ai_request_btn", type="primary", disabled=not matched_policies
+            "Request AI Report", key="ai_request_btn", icon=":material/auto_awesome:", disabled=not matched_policies
         ):
             run_ai_analysis(incident, analysis, matched_policies, context_id)
         classification = classification_of(analysis)
@@ -907,11 +967,12 @@ def render_investigation(incident: dict[str, Any]) -> None:
     severity_tone = SEVERITY_TONES.get(analysis.get("severity") or "", "violet")
     cards = st.columns(3, gap="small")
     kpi_card(cards[0], "Risk score", f"{analysis['risk_score']} / 100", "Rule-based, not a probability", tone,
-             "gpp_maybe", RISK_NOTE)
-    kpi_card(cards[1], "Severity", severity_text(analysis), "Derived by engine.py", severity_tone, "shield")
+             "gpp_maybe", RISK_NOTE, compact=True)
+    kpi_card(cards[1], "Severity", severity_text(analysis), "Derived by engine.py", severity_tone, "shield",
+             compact=True)
     kpi_card(cards[2], "Priority", short_text(priority_text(analysis)),
-             "Backend-provided" if analysis.get("investigation_priority") else "Not provided yet", "violet",
-             "warning", priority_text(analysis))
+             "Backend-provided" if analysis.get("investigation_priority") else "Not provided by the backend yet",
+             "violet", "warning", compact=True)
 
     render_basic_info(incident)
 

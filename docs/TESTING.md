@@ -2,19 +2,19 @@
 
 ## Recorded automated result
 
-The current codebase contains 71 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
+The current codebase contains 72 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Recorded result (`dev` branch, Security Analytics Console UI): **71 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
+Recorded result (`dev` branch, Security Analytics Console UI): **72 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
 
 All tests are offline. Provider tests use mocks or an in-process `httpx.MockTransport` and never contact Nebius. UI tests replace `ai_client.generate_report` with a mock that fails the test if any path tries to reach the provider, even when a local `.streamlit/secrets.toml` exists.
 
 ## Test inventory
 
-### `TestGuardBeeUI` (15) — headless Streamlit `AppTest`
+### `TestGuardBeeUI` (16) — headless Streamlit `AppTest`
 
 Pages are reached through the app's own controls (Dashboard Recent Incidents "View" and "View All", decision panel "View in Audit History", Audit History "Open incident"), so navigation buttons are exercised too.
 
@@ -22,6 +22,7 @@ Pages are reached through the app's own controls (Dashboard Recent Incidents "Vi
 - `test_app_injects_no_dynamic_html`
 - `test_dashboard_counts_come_from_engine`
 - `test_view_all_opens_security_incidents`
+- `test_full_report_dialog_shows_engine_rules`
 - `test_search_filters_incident_list`
 - `test_unclassified_engine_output_is_never_labelled`
 - `test_engine_classification_priority_and_unassigned_severity_render`
