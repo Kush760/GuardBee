@@ -46,6 +46,7 @@
 - Audit History: decision and incident filters, newest-first table, record detail, and a link back to the incident.
 - Identifiers render as literal inline code so e-mail addresses are never turned into links; removed the deprecated `use_container_width` argument.
 - UI tests rewritten for page navigation (14 tests). The suite grew from 68 to 70 tests.
+- Gradient styling: navy-to-indigo sidebar, indigo/violet active page, sidebar demo card and primary buttons, and green/red gradient Approve/Reject once enabled. Summary and indicator cards are tinted by status (blue, rose, green, amber, violet); on the investigation page the tint follows the engine's actual classification and severity. Tints need keyed containers (newer Streamlit); older versions in the allowed range show plain white cards.
 
 ## Documentation and delivery assets
 

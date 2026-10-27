@@ -9,6 +9,7 @@ Markdown-escaped first. The only HTML injected is the static stylesheet below.
 
 from __future__ import annotations
 
+import inspect
 import os
 import re
 from datetime import datetime
@@ -48,6 +49,11 @@ CLASSIFICATIONS = {
     "NORMAL": ("green", "No suspicious pattern was detected by the configured rules in the available events."),
 }
 SEVERITY_COLORS = {"HIGH": "red", "MEDIUM": "orange", "LOW": "blue"}
+# Card tints (see the tone-* rules in STYLES); they follow engine output, never invent it.
+CLASSIFICATION_TONES = {"SUSPICIOUS": "red", "NORMAL": "green", "INSUFFICIENT_EVIDENCE": "amber"}
+SEVERITY_TONES = {"HIGH": "red", "MEDIUM": "amber", "LOW": "blue"}
+# Keyed containers (needed for per-card tints) arrived in newer Streamlit; older ones stay untinted.
+CONTAINER_TAKES_KEY = "key" in inspect.signature(st.container).parameters
 DECISION_LABELS = {"APPROVED": "✅ APPROVED", "REJECTED": "⛔ REJECTED"}
 NOT_ASSIGNED = "Not assigned"
 NOT_CLASSIFIED = "Not classified"
@@ -77,7 +83,9 @@ h1, h2, h3, h4 { color: var(--gb-text); letter-spacing: -0.01em; }
 h1 { font-weight: 750 !important; }
 
 /* Sidebar */
-[data-testid="stSidebar"] { background: var(--gb-sidebar); border-right: 1px solid #1E293B; }
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #0B1220 0%, #0F1730 45%, #1A1E4A 80%, #2B2675 100%);
+  border-right: 1px solid #1E293B; }
 @media (min-width: 992px) { [data-testid="stSidebar"] { min-width: 248px !important; max-width: 248px !important; } }
 [data-testid="stSidebar"] p, [data-testid="stSidebar"] li, [data-testid="stSidebar"] label,
 [data-testid="stSidebar"] span, [data-testid="stSidebar"] small { color: #CBD5E1; }
@@ -85,17 +93,44 @@ h1 { font-weight: 750 !important; }
 [data-testid="stSidebarNavLink"] { border-radius: 8px; margin: 2px 0; padding: 0.45rem 0.75rem; }
 [data-testid="stSidebarNavLink"]:hover { background: var(--gb-sidebar-panel); }
 [data-testid="stSidebarNavLink"] span { color: #CBD5E1; font-weight: 500; }
-[data-testid="stSidebarNavLink"][aria-current="page"] { background: var(--gb-accent); }
+[data-testid="stSidebarNavLink"][aria-current="page"] {
+  background: linear-gradient(90deg, #4F46E5 0%, #6366F1 60%, #7C3AED 100%);
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.35); }
 [data-testid="stSidebarNavLink"][aria-current="page"] span { color: #FFFFFF; font-weight: 650; }
 [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"],
 [data-testid="stSidebar"] .gb-sidebar-card { background: var(--gb-sidebar-panel); border-color: #26344D !important; }
 [data-testid="stSidebar"] hr { border-color: #1E293B; }
+[data-testid="stSidebar"] .st-key-sidebar-demo {
+  background: linear-gradient(135deg, #3730A3 0%, #4F46E5 55%, #6D28D9 100%) !important;
+  border: none !important; border-radius: 12px; box-shadow: 0 8px 20px rgba(49, 46, 129, 0.45); }
+[data-testid="stSidebar"] .st-key-sidebar-demo p, [data-testid="stSidebar"] .st-key-sidebar-demo span { color: #E0E7FF; }
 
 /* Cards */
 [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"] {
   background: var(--gb-card); border: 1px solid var(--gb-border) !important; border-radius: 12px;
   box-shadow: 0 1px 2px rgba(20, 33, 61, 0.04), 0 4px 16px rgba(20, 33, 61, 0.04);
 }
+[class*="st-key-tone-"] { border-radius: 12px; }
+[class*="st-key-tone-red"] { background: linear-gradient(135deg, #FFE4E6 0%, #FFF5F6 45%, #FFFFFF 100%) !important; border-color: #FECDD3 !important; }
+[class*="st-key-tone-red"] [data-testid="stMetricValue"] { color: #DC2626; }
+[class*="st-key-tone-green"] { background: linear-gradient(135deg, #DCFCE7 0%, #F3FDF6 45%, #FFFFFF 100%) !important; border-color: #BBF7D0 !important; }
+[class*="st-key-tone-green"] [data-testid="stMetricValue"] { color: #16A34A; }
+[class*="st-key-tone-amber"] { background: linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 45%, #FFFFFF 100%) !important; border-color: #FDE68A !important; }
+[class*="st-key-tone-amber"] [data-testid="stMetricValue"] { color: #D97706; }
+[class*="st-key-tone-blue"] { background: linear-gradient(135deg, #DBEAFE 0%, #F0F6FF 45%, #FFFFFF 100%) !important; border-color: #BFDBFE !important; }
+[class*="st-key-tone-blue"] [data-testid="stMetricValue"] { color: #2563EB; }
+[class*="st-key-tone-violet"] { background: linear-gradient(135deg, #EDE9FE 0%, #F7F5FF 45%, #FFFFFF 100%) !important; border-color: #DDD6FE !important; }
+[class*="st-key-tone-violet"] [data-testid="stMetricValue"] { color: #6D28D9; }
+[data-testid="stMain"] button[data-testid="stBaseButton-primary"]:not(:disabled) {
+  background: linear-gradient(90deg, #4F46E5 0%, #6366F1 55%, #7C3AED 100%); border: none; color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.30); }
+[data-testid="stMain"] .st-key-btn_approve button:not(:disabled) {
+  background: linear-gradient(90deg, #16A34A 0%, #22C55E 100%); border: none; color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.30); }
+[data-testid="stMain"] .st-key-btn_reject button:not(:disabled) {
+  background: linear-gradient(90deg, #DC2626 0%, #EF4444 100%); border: none; color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.30); }
+[data-testid="stMain"] button:not(:disabled):hover { filter: brightness(1.06); }
 [data-testid="stMetricLabel"] p { color: var(--gb-muted); font-size: 0.78rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.05em; }
 [data-testid="stMetricValue"] { color: var(--gb-text); font-weight: 750; font-size: clamp(1.15rem, 1.6vw, 1.7rem); }
@@ -301,8 +336,18 @@ def demo_banner() -> None:
     )
 
 
-def metric_card(column: Any, label: str, value: Any, caption: str, help_text: str | None = None) -> None:
-    with column.container(border=True):
+def card(parent: Any = st, key: str | None = None) -> Any:
+    """Bordered card; a key adds an st-key-* class that the stylesheet can tint."""
+    if key and CONTAINER_TAKES_KEY:
+        return parent.container(border=True, key=key)
+    return parent.container(border=True)
+
+
+def metric_card(
+    column: Any, label: str, value: Any, caption: str, help_text: str | None = None, tone: str | None = None
+) -> None:
+    key = f"tone-{tone}-{re.sub(r'[^a-z0-9]+', '-', label.lower())}" if tone else None
+    with card(column, key):
         st.metric(label, value, help=help_text)
         st.caption(caption)
 
@@ -351,7 +396,7 @@ def render_stepper(slot: Any, steps: list[tuple[str, str, str]]) -> None:
 def render_sidebar() -> None:
     with st.sidebar:
         st.divider()
-        with st.container(border=True):
+        with card(st, "sidebar-demo"):
             st.markdown("**⚠️ Demo only**")
             st.caption(
                 "Synthetic incidents and simulated decisions. No live monitoring and no real account actions."
@@ -408,7 +453,7 @@ def dashboard_page() -> None:
     demo_banner()
 
     cards = st.columns(5)
-    metric_card(cards[0], "Valid incidents", len(incidents), "Loaded and validated")
+    metric_card(cards[0], "Valid incidents", len(incidents), "Loaded and validated", tone="blue")
     if any_classified:
         for column, key, caption in zip(
             cards[1:4],
@@ -416,13 +461,16 @@ def dashboard_page() -> None:
             ("Match a suspicious pattern", "No suspicious pattern found", "Cannot classify either way"),
         ):
             count = sum(1 for analysis in analyses.values() if classification_of(analysis) == key)
-            metric_card(column, key.replace("_", " ").title(), count, caption)
+            metric_card(column, key.replace("_", " ").title(), count, caption, tone=CLASSIFICATION_TONES[key])
     else:
-        for column, label in zip(cards[1:4], ("Suspicious", "Normal", "Insufficient evidence")):
-            metric_card(column, label, "—", "Engine does not classify yet")
+        for column, label, tone in zip(
+            cards[1:4], ("Suspicious", "Normal", "Insufficient evidence"), ("red", "green", "amber")
+        ):
+            metric_card(column, label, "—", "Engine does not classify yet", tone=tone)
     metric_card(
         cards[4], "Validation", "Passed", "Fail-closed loader: 0 rejected",
         help_text="Every record must pass validation or loading stops. Partial processing is not implemented yet.",
+        tone="violet",
     )
 
     left, right = st.columns([1, 2], gap="medium")
@@ -727,13 +775,19 @@ def render_investigation(incident: dict[str, Any]) -> None:
         cards[0], "Classification", short_text(classification_text(analysis)),
         "From engine.py" if classification_of(analysis) else "Not classified by the engine yet",
         help_text=classification_text(analysis),
+        tone=CLASSIFICATION_TONES.get(classification_of(analysis) or "", "violet"),
     )
-    metric_card(cards[1], "Risk score", f"{analysis['risk_score']} / 100", "Rule-based, not a probability", RISK_NOTE)
-    metric_card(cards[2], "Severity", severity_text(analysis), "Derived by engine.py")
+    severity_tone = SEVERITY_TONES.get(analysis.get("severity") or "", "violet")
+    metric_card(
+        cards[1], "Risk score", f"{analysis['risk_score']} / 100", "Rule-based, not a probability", RISK_NOTE,
+        tone=severity_tone,
+    )
+    metric_card(cards[2], "Severity", severity_text(analysis), "Derived by engine.py", tone=severity_tone)
     metric_card(
         cards[3], "Investigation priority", short_text(priority_text(analysis)),
         "Backend-provided" if analysis.get("investigation_priority") else "Not provided by the backend yet",
         help_text=priority_text(analysis),
+        tone="violet",
     )
 
     stepper = st.container(border=True)
