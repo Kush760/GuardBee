@@ -37,7 +37,7 @@ st.set_page_config(
     page_title="GuardBee | Security Analytics Console",
     page_icon=str(ASSETS / "guardbee_shield.png"),
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",  # expanded on desktop, collapsed on phones so it never covers the page
 )
 
 # Wording required by the UI specification. The class itself must come from engine.py;
@@ -194,7 +194,7 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [data-testid="stSidebar"] {
   background: linear-gradient(180deg, #0B1220 0%, #0F1730 45%, #1A1E4A 80%, #2B2675 100%);
   border-right: 1px solid #1E293B; }
-@media (min-width: 992px) {
+@media (min-width: 768px) {
   [data-testid="stSidebar"]:not([data-collapsed="true"]) { min-width: 248px !important; max-width: 248px !important; } }
 [data-testid="stSidebar"] p, [data-testid="stSidebar"] li, [data-testid="stSidebar"] label,
 [data-testid="stSidebar"] span, [data-testid="stSidebar"] small { color: #CBD5E1; }
@@ -275,6 +275,70 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [data-testid="stMain"] button[data-testid^="stBaseButton-primary"],
 [data-testid="stMain"] button[data-testid^="stBaseButton-secondary"] { border-radius: 8px; font-weight: 600; width: 100%; }
 [data-testid="stCaptionContainer"] { color: var(--gb-muted); }
+
+/* Responsive layout: rows react to the width of the content area (sidebar excluded), not the window. */
+[data-testid="stMainBlockContainer"],
+.st-key-layout-incidents > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {
+  container-type: inline-size; }
+[class*="st-key-layout-"] > * > [data-testid="stHorizontalBlock"],
+.st-key-inc-header > * > [data-testid="stHorizontalBlock"],
+.st-key-inc-basic > * > [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+/* Timeline rows and the recent-incidents table keep their columns side by side at every width. */
+[class*="st-key-tl-"] > * > [data-testid="stHorizontalBlock"],
+.st-key-layout-table [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
+[class*="st-key-tl-"] > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+.st-key-layout-table [data-testid="stColumn"] { min-width: 0 !important; }
+[data-testid="stMain"] button p { white-space: nowrap; }
+@container (max-width: 900px) {
+  .st-key-layout-kpis > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    flex: 1 1 calc(33.333% - 1rem) !important; min-width: calc(33.333% - 1rem) !important; }
+  [class*="st-key-tone-"][class*="-kpi-"] { min-height: 150px; }
+}
+@container (max-width: 860px) {
+  .st-key-layout-split > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+  .st-key-layout-incidents > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    flex: 1 1 100% !important; min-width: 100% !important; }
+  .st-key-dash-overview, .st-key-dash-recent { min-height: 0; }
+  /* Stacked incident list becomes a swipeable row of cards above the investigation. */
+  .st-key-incident_picker [role="radiogroup"] { flex-direction: row; flex-wrap: nowrap; overflow-x: auto;
+    padding: 0.1rem 0.1rem 0.5rem; scroll-snap-type: x proximity; }
+  .st-key-incident_picker [role="radiogroup"] > div { flex: 0 0 240px; width: 240px; scroll-snap-align: start; }
+  .st-key-incident_picker [role="radiogroup"] > div:hover { transform: none; }
+}
+@container (max-width: 680px) {
+  .st-key-layout-toolbar > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child,
+  .st-key-layout-timeline > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+  [class*="st-key-layout-findings-"] > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+  .st-key-layout-pair > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    flex: 1 1 100% !important; min-width: 100% !important; }
+  .st-key-layout-toolbar > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) {
+    flex: 2 1 0 !important; min-width: 0 !important; }
+  .st-key-layout-toolbar > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(3) {
+    flex: 1 1 0 !important; min-width: 110px !important; }
+  .st-key-inc-basic > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    flex: 1 1 calc(50% - 1rem) !important; min-width: calc(50% - 1rem) !important; }
+  .st-key-inc-policies, .st-key-inc-decision { min-height: 0; }
+}
+@container (max-width: 560px) {
+  .st-key-layout-kpis > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    flex: 1 1 calc(50% - 1rem) !important; min-width: calc(50% - 1rem) !important; }
+  .st-key-inc-header > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    flex: 1 1 100% !important; min-width: 100% !important; }
+}
+@container (max-width: 540px) {
+  /* Recent incidents: keep ID, score, severity and View; the incident page shows the rest. */
+  .st-key-layout-table [data-testid="stColumn"]:nth-child(2),
+  .st-key-layout-table [data-testid="stColumn"]:nth-child(5) { display: none; }
+}
+@container (max-width: 460px) {
+  .st-key-layout-inc-kpis > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    flex: 1 1 100% !important; min-width: 100% !important; }
+  [class*="st-key-tone-"][class*="-kpi-"]:not([class*="-kpi-c-"]) { min-height: 0; }
+}
+@media (max-width: 640px) {
+  [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
+  h1 { font-size: 1.6rem !important; }
+}
 </style>
 """
 
@@ -567,7 +631,8 @@ def overview_donut(groups: list[tuple[str, int, str]]) -> None:
 def dashboard_page() -> None:
 
     # Row 1: KPI cards
-    cards = st.columns(5, gap="small")
+    with keyed(st, "layout-kpis"):
+        cards = st.columns(5, gap="small")
     kpi_card(cards[0], "Total valid incidents", len(incidents), "From dataset", "blue", "verified_user")
     for column, key, icon in zip(
         cards[1:4], ("SUSPICIOUS", "NORMAL", "INSUFFICIENT_EVIDENCE"), ("gpp_maybe", "gpp_good", "help")
@@ -587,7 +652,8 @@ def dashboard_page() -> None:
     )
 
     # Row 2: overview donut and recent incidents
-    left, right = st.columns([5, 7], gap="small")
+    with keyed(st, "layout-split"):
+        left, right = st.columns([5, 7], gap="small")
     with card(left, "dash-overview"):
         st.subheader("Incident Overview")
         if any_classified:
@@ -620,7 +686,8 @@ def dashboard_page() -> None:
         st.subheader("Recent Incidents")
         recent = sorted(incidents, key=latest_event_time, reverse=True)[:5]
         widths = [1.5, 2.3, 1, 1.6, 1.2, 1.3]
-        with keyed(st, "dash-thead"):
+        table = keyed(st, "layout-table")  # scrolls sideways on narrow screens instead of crushing columns
+        with keyed(table, "dash-thead"):
             for column, heading in zip(
                 st.columns(widths, vertical_alignment="center"),
                 ("ID", "Classification", "Score", "Severity", "Priority", ""),
@@ -628,7 +695,7 @@ def dashboard_page() -> None:
                 column.caption(heading)
         for incident in recent:
             analysis = analyses[incident["id"]]
-            with keyed(st, f"dash-row-{slug(incident['id'])}"):
+            with keyed(table, f"dash-row-{slug(incident['id'])}"):
                 row = st.columns(widths, vertical_alignment="center")
                 row[0].markdown(f"**{md(incident['id'])}**")
                 row[1].markdown(classification_badge(analysis))
@@ -737,7 +804,8 @@ def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
     evidence = set(analysis["evidence_ids"])
     known = set(incident.get("known_ips", []))
     ordered = sorted(incident["events"], key=event_time)
-    events_column, engine_column = st.columns([3, 2], gap="medium")
+    with keyed(st, "layout-timeline"):
+        events_column, engine_column = st.columns([3, 2], gap="medium")
     with events_column:
         st.caption("Chronological by time_utc. Tagged events are evidence cited by triggered rules.")
         timeline = keyed(st, "timeline")
@@ -788,11 +856,11 @@ def full_report_dialog(incident_id: str) -> None:
         f"{tone_icon(analysis)} **{md(incident_id)}** · {md(incident['title'])}  \n"
         f"Risk score **{analysis['risk_score']} / 100** · Severity {severity_badge(analysis)}"
     )
-    render_rules(incident, analysis)
+    render_rules(incident, analysis, scope="dialog")
     st.caption(RISK_NOTE)
 
 
-def render_rules(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
+def render_rules(incident: dict[str, Any], analysis: dict[str, Any], scope: str = "tab") -> None:
     if analysis["rule_hits"]:
         st.dataframe(
             [
@@ -819,7 +887,8 @@ def render_rules(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
     known = set(incident.get("known_ips", []))
     failed = sum(1 for event in events if event["type"] == "login_failed")
     unfamiliar = sorted({event["ip"] for event in events if event["ip"] not in known})
-    facts, inference, unknowns = st.columns(3, gap="small")
+    with keyed(st, f"layout-findings-{scope}"):  # the dialog renders a second copy
+        facts, inference, unknowns = st.columns(3, gap="small")
     with facts.container(border=True):
         st.markdown("**Observed facts**")
         st.markdown(
@@ -970,7 +1039,8 @@ def render_investigation(incident: dict[str, Any]) -> None:
 
     tone = incident_tone(analysis)
     severity_tone = SEVERITY_TONES.get(analysis.get("severity") or "", "violet")
-    cards = st.columns(3, gap="small")
+    with keyed(st, "layout-inc-kpis"):
+        cards = st.columns(3, gap="small")
     kpi_card(cards[0], "Risk score", f"{analysis['risk_score']} / 100", "Rule-based, not a probability", tone,
              "gpp_maybe", RISK_NOTE, compact=True)
     kpi_card(cards[1], "Severity", severity_text(analysis), "Derived by engine.py", severity_tone, "shield",
@@ -993,7 +1063,8 @@ def render_investigation(incident: dict[str, Any]) -> None:
     with ai_tab:
         render_ai_panel(incident, analysis, matched_policies, context_id)
 
-    policies_column, decision_column = st.columns(2, gap="small")
+    with keyed(st, "layout-pair"):
+        policies_column, decision_column = st.columns(2, gap="small")
     with policies_column:
         render_policy_summary(matched_policies)
     with decision_column:
@@ -1022,7 +1093,8 @@ if any_classified:
 
 
 def incidents_page() -> None:
-    heading, search, choose = st.columns([3, 2, 1], vertical_alignment="bottom")
+    with keyed(st, "layout-toolbar"):
+        heading, search, choose = st.columns([3, 2, 1], vertical_alignment="bottom")
     with heading:
         page_header("Security Incidents", "View and analyze individual incidents")
     search.text_input(
@@ -1031,7 +1103,8 @@ def incidents_page() -> None:
     )
     choose.selectbox("Filter", list(INCIDENT_FILTERS), key="incident_filter", label_visibility="collapsed")
 
-    left, main = st.columns([1.25, 3], gap="medium")
+    with keyed(st, "layout-incidents"):
+        left, main = st.columns([1.25, 3], gap="medium")
     with left:
         selected = render_incident_list(filtered_incidents())
     with main:

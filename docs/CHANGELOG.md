@@ -58,6 +58,7 @@
 - Dashboard header logo is now an SVG with real text for "GuardBee" and "Security Analytics Console" (the JPEG-derived PNG made the small subtitle blurry); only the bee shield remains a bitmap.
 - Removed the red Demo Only card from the dashboard header; the sidebar's Demo only card, visible on every page, keeps the disclaimer.
 - Removed the dashboard header (logo and tagline); the dashboard now opens on the KPI cards and the sidebar carries the GuardBee logo. The unused header logo asset was deleted.
+- Made the UI responsive. Rows react to the width of the content area (sidebar excluded) through CSS container queries: KPI cards wrap to three, then two per row; the dashboard's overview and recent-incidents cards stack; the incident list stacks above the investigation as a swipeable row of cards; timeline, findings, and policy/decision columns stack on narrow screens. On narrow screens Recent Incidents keeps ID, score, severity, and View (classification and priority remain on the incident page). The sidebar starts collapsed on phones (`initial_sidebar_state="auto"`).
 
 ## Documentation and delivery assets
 
