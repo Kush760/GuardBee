@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class TestDataValidation(unittest.TestCase):
     def test_existing_incident_data_is_valid(self):
         incidents = load_incidents(ROOT / "data" / "incidents.json")
-        self.assertEqual(len(incidents), 3)
+        self.assertEqual(len(incidents), 13)
 
     def test_missing_required_incident_field_is_rejected(self):
         with self.assertRaisesRegex(DataValidationError, "account"):

@@ -20,10 +20,22 @@ def start_app():
 
 
 def open_incident(incident_id):
-    """Reach an incident the way an analyst does: Dashboard -> Recent Incidents -> View."""
+    """Reach an incident the way an analyst does: Dashboard -> View All -> pick it from the list."""
     app = start_app()
-    app.button(key=f"dash_view_{incident_id}").click().run()
+    app.button(key="dash_view_all").click().run()
+    app.radio(key="incident_picker").set_value(incident_id).run()
     return app
+
+
+def unclassified(incident):
+    """Engine output as it looked before classification and priority were provided."""
+    analysis = dict(ORIGINAL_ANALYZE(incident))
+    analysis.pop("classification", None)
+    analysis.pop("investigation_priority", None)
+    return analysis
+
+
+ORIGINAL_ANALYZE = engine.analyze_incident
 
 
 def page_text(app):
@@ -80,22 +92,37 @@ class TestGuardBeeUI(unittest.TestCase):
         self.assertEqual(re.findall(r"st\.html\((.*?)\)", source), ["STYLES"])
 
     def test_dashboard_counts_come_from_engine(self):
-        values = metric_values(start_app())
-        self.assertEqual(values["Total valid incidents"], "3")
-        self.assertEqual(values["Suspicious"], "—")
-        self.assertEqual(values["Normal"], "—")
-        self.assertEqual(values["Insufficient evidence"], "—")
+        app = start_app()
+        values = metric_values(app)
+        self.assertEqual(values["Total valid incidents"], "13")
+        self.assertEqual(values["Suspicious"], "6")
+        self.assertEqual(values["Normal"], "3")
+        self.assertEqual(values["Insufficient Evidence"], "4")
         self.assertEqual(values["Rejected records"], "0")
-        self.assertIn("By severity", page_text(start_app()))  # no classification is inferred
+        self.assertIn("By classification", page_text(app))
+
+    def test_dashboard_falls_back_to_severity_without_engine_classes(self):
+        with patch.object(engine, "analyze_incident", side_effect=unclassified):
+            app = start_app()
+        values = metric_values(app)
+        self.assertEqual(values["Suspicious"], "—")
+        self.assertEqual(values["Insufficient evidence"], "—")
+        self.assertIn("By severity", page_text(app))  # no classification is inferred
 
     def test_view_all_opens_security_incidents(self):
         app = start_app()
         app.button(key="dash_view_all").click().run()
         self.assertEqual(app.title[0].value, "Security Incidents")
 
+    def test_recent_incident_view_opens_that_incident(self):
+        app = start_app()
+        app.button(key="dash_view_INC-1014").click().run()  # INC-1014 has the latest event
+        self.assertEqual(app.title[0].value, "Security Incidents")
+        self.assertEqual(app.radio(key="incident_picker").value, "INC-1014")
+
     def test_search_filters_incident_list(self):
         app = open_incident("INC-1001")
-        app.text_input(key="incident_search").input("unfamiliar login").run()
+        app.text_input(key="incident_search").input("requires review").run()
         options = app.radio(key="incident_picker").options
         self.assertEqual(len(options), 1)
         self.assertIn("**INC-1002**", options[0])
@@ -113,7 +140,8 @@ class TestGuardBeeUI(unittest.TestCase):
 
     # -- Classification, severity, priority ----------------------------------------
     def test_unclassified_engine_output_is_never_labelled(self):
-        app = open_incident("INC-1003")
+        with patch.object(engine, "analyze_incident", side_effect=unclassified):
+            app = open_incident("INC-1003")
         text = page_text(app)
         self.assertIn("NOT CLASSIFIED", text)
         self.assertNotIn("green-background[NORMAL]", text)
@@ -121,31 +149,21 @@ class TestGuardBeeUI(unittest.TestCase):
         self.assertEqual(metric_values(app)["Priority"], "—")
 
     def test_engine_classification_priority_and_unassigned_severity_render(self):
-        original = engine.analyze_incident
-        overrides = {
-            "INC-1001": {"classification": "SUSPICIOUS", "investigation_priority": "Urgent review"},
-            "INC-1002": {"classification": "INSUFFICIENT_EVIDENCE", "investigation_priority": "Routine review"},
-            "INC-1003": {"classification": "NORMAL", "severity": None, "investigation_priority": "None"},
-        }
+        suspicious = open_incident("INC-1001")
+        self.assertIn(":red-background[SUSPICIOUS]", page_text(suspicious))
+        self.assertEqual(metric_values(suspicious)["Severity"], "HIGH")
+        self.assertEqual(metric_values(suspicious)["Priority"], "HIGH")
 
-        def classified(incident):
-            return dict(original(incident), **overrides[incident["id"]])
+        normal = open_incident("INC-1003")
+        self.assertIn(":green-background[NORMAL]", page_text(normal))
+        self.assertIn("No suspicious pattern was detected by the configured rules", page_text(normal))
+        self.assertEqual(metric_values(normal)["Severity"], "Not assigned")
+        self.assertEqual(metric_values(normal)["Priority"], "NONE")
 
-        with patch.object(engine, "analyze_incident", side_effect=classified):
-            values = metric_values(start_app())
-            self.assertEqual(values["Suspicious"], "1")
-            self.assertEqual(values["Normal"], "1")
-            self.assertEqual(values["Insufficient Evidence"], "1")
-
-            normal = open_incident("INC-1003")
-            self.assertIn(":green-background[NORMAL]", page_text(normal))
-            self.assertIn("No suspicious pattern was detected by the configured rules", page_text(normal))
-            self.assertEqual(metric_values(normal)["Severity"], "Not assigned")
-
-            unclear = open_incident("INC-1002")
-            self.assertIn("not sufficient to classify this activity", page_text(unclear))
-            self.assertNotIn("SUSPICIOUS", page_text(unclear))
-            self.assertEqual(metric_values(unclear)["Priority"], "Routine review")
+        unclear = open_incident("INC-1002")
+        self.assertIn("not sufficient to classify this activity", page_text(unclear))
+        self.assertNotIn("SUSPICIOUS", page_text(unclear))
+        self.assertEqual(metric_values(unclear)["Priority"], "LOW")
 
     # -- Evidence -------------------------------------------------------------------
     def test_timeline_is_chronological_and_rules_match_engine(self):
@@ -156,7 +174,7 @@ class TestGuardBeeUI(unittest.TestCase):
         expected = engine.analyze_incident(data_loader.load_incidents(APP_PATH.parent / "data" / "incidents.json")[0])
         self.assertEqual(list(rules["Rule"]), [hit["rule_id"] for hit in expected["rule_hits"]])
         self.assertEqual(list(rules["Points"]), [hit["points"] for hit in expected["rule_hits"]])
-        self.assertIn("`GB-RULE-002` → `EVT-006`", page_text(app))
+        self.assertIn("`GB-RULE-003` → `EVT-002` `EVT-003` `EVT-004` `EVT-005` `EVT-006`", page_text(app))
 
     def test_data_text_is_shown_literally(self):
         hostile = "**bold** [x](https://evil.example) <img src=x onerror=alert(1)> admin@evil.example"

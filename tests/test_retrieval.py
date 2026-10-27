@@ -29,8 +29,18 @@ class TestPolicyRetrieval(unittest.TestCase):
     def test_bundled_incidents_retrieve_expected_policy_ids(self):
         expected = {
             "INC-1001": ["POL-001", "POL-002"],
-            "INC-1002": ["POL-001", "POL-002"],
+            "INC-1002": ["POL-001", "POL-004", "POL-002"],
             "INC-1003": ["POL-001"],
+            "INC-1004": ["POL-001"],
+            "INC-1005": ["POL-003", "POL-001"],
+            "INC-1006": ["POL-001"],
+            "INC-1007": ["POL-001", "POL-004"],
+            "INC-1008": ["POL-001", "POL-002"],
+            "INC-1009": [],  # nothing clears the threshold, so the AI report stays unavailable
+            "INC-1010": ["POL-001", "POL-002", "POL-004"],
+            "INC-1012": ["POL-001"],
+            "INC-1013": ["POL-001", "POL-002"],
+            "INC-1014": ["POL-001", "POL-004"],
         }
         for incident in self.incidents:
             with self.subTest(incident=incident["id"]):
@@ -82,7 +92,7 @@ class TestPolicyRetrieval(unittest.TestCase):
         second = retrieve_policies("unfamiliar login IP Finance", self.policies)
         self.assertEqual(first, second)
         self.assertEqual(self.policies, original)
-        self.assertEqual(set(first[0]), {"id", "title", "text", "match_score"})
+        self.assertEqual(set(first[0]), set(self.policies[0]) | {"match_score"})  # policy fields pass through
 
     def test_invalid_arguments_are_rejected(self):
         cases = [

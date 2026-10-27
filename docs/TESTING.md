@@ -2,26 +2,28 @@
 
 ## Recorded automated result
 
-The current codebase contains 72 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
+The current codebase contains 86 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Recorded result (`dev` branch, Security Analytics Console UI): **72 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
+Recorded result (`dev` branch, Security Analytics Console UI with the v2.2 engine and 13-incident dataset): **86 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
 
 All tests are offline. Provider tests use mocks or an in-process `httpx.MockTransport` and never contact Nebius. UI tests replace `ai_client.generate_report` with a mock that fails the test if any path tries to reach the provider, even when a local `.streamlit/secrets.toml` exists.
 
 ## Test inventory
 
-### `TestGuardBeeUI` (16) — headless Streamlit `AppTest`
+### `TestGuardBeeUI` (18) — headless Streamlit `AppTest`
 
-Pages are reached through the app's own controls (Dashboard Recent Incidents "View" and "View All", decision panel "View in Audit History", Audit History "Open incident"), so navigation buttons are exercised too.
+Pages are reached through the app's own controls (Dashboard "View All" plus the incident list, Dashboard Recent Incidents "View", decision panel "View in Audit History", Audit History "Open incident"), so navigation buttons are exercised too.
 
 - `test_dashboard_and_every_incident_render`
 - `test_app_injects_no_dynamic_html`
 - `test_dashboard_counts_come_from_engine`
+- `test_dashboard_falls_back_to_severity_without_engine_classes`
 - `test_view_all_opens_security_incidents`
+- `test_recent_incident_view_opens_that_incident`
 - `test_full_report_dialog_shows_engine_rules`
 - `test_search_filters_incident_list`
 - `test_unclassified_engine_output_is_never_labelled`
@@ -37,7 +39,7 @@ Pages are reached through the app's own controls (Dashboard Recent Incidents "Vi
 
 Manual visual check (headless Microsoft Edge screenshots, 1440px and 1280px wide, sidebar expanded and collapsed): all three pages, every investigation tab, and the generated-report and recorded-decision states (using a canned report, no provider call). The dashboard fits a 1440×900 viewport without scrolling; at 1280px its KPI cards stay one height and every Recent Incidents column is visible. Responsive check at 1100px, 820px (tablet), and 390px (phone): no horizontal page scroll; KPI cards wrap, the dashboard and incident layouts stack, the sidebar starts collapsed on a phone, and every action (View, Request AI Report, Approve/Reject) stays reachable.
 
-UI specification checklist items that cannot be tested until the backend provides them: engine-produced NORMAL / INSUFFICIENT_EVIDENCE results for real incidents, partial validation with rejected-record reporting, and audit history that survives an app restart (SQLite). The classification and priority display is tested with a patched engine result.
+Classification, severity, and priority display is tested against real `engine.py` output (INC-1001 SUSPICIOUS/HIGH, INC-1002 INSUFFICIENT_EVIDENCE/LOW, INC-1003 NORMAL/NONE with severity "Not assigned"). The pre-classification fallback ("NOT CLASSIFIED", dashboard by severity) is tested with a patched engine result. Still untestable until the backend provides them: partial validation with rejected-record reporting, and audit history that survives an app restart (SQLite).
 
 ### `TestReportValidation` (17)
 
@@ -96,12 +98,24 @@ UI specification checklist items that cannot be tested until the backend provide
 - `test_missing_file_is_rejected`
 - `test_policy_requires_text`
 
-### `TestGuardBeeRulesAndRetrieval` (7)
+### `TestGuardBeeDetectionEngine` (16) and `TestGuardBeePolicyRetrieval` (3) — `tests/test_engine.py`, from v2.2
 
-- `test_high_risk_login_has_explainable_evidence`
-- `test_known_ip_case_is_low_risk`
-- `test_unfamiliar_success_is_medium_risk`
-- `test_three_failures_reach_medium_boundary`
+- `test_production_suspicious_incident_has_explainable_evidence`
+- `test_normal_known_ip_login_has_no_low_severity`
+- `test_unfamiliar_ip_alone_is_insufficient_evidence`
+- `test_normal_repeated_known_successes`
+- `test_known_ip_failure_then_success_is_suspicious`
+- `test_failure_burst_inside_default_window`
+- `test_failures_outside_burst_window_are_insufficient_evidence`
+- `test_out_of_order_timestamps_use_chronology`
+- `test_empty_ip_is_insufficient_evidence_not_unfamiliar`
+- `test_overlapping_rules_do_not_double_count_failure_points`
+- `test_same_failure_burst_with_multiple_successes_scores_rule_003_once`
+- `test_independent_failure_success_patterns_can_each_contribute`
+- `test_finance_and_non_finance_identical_pattern_score_parity`
+- `test_risk_score_and_classification_remain_separate`
+- `test_score_is_capped_at_100`
+- `test_configurable_burst_window_parameter`
 - `test_tfidf_returns_ranked_policy_records`
 - `test_tfidf_returns_no_match_for_unrelated_or_empty_query`
 - `test_tfidf_threshold_can_exclude_weak_matches`
