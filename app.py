@@ -569,7 +569,7 @@ def overview_donut(groups: list[tuple[str, int, str]]) -> None:
 def dashboard_page() -> None:
     head, notice = st.columns([3, 2], vertical_alignment="center")
     with head:
-        st.image(str(ASSETS / "guardbee_logo_full.png"), width=320)
+        st.image(str(ASSETS / "guardbee_logo_full.svg"), width=340)
         st.caption("**AI-Powered Security Analysis for Safer Access**")
     with card(notice, "dash-demo"):
         st.markdown("**:material/error: Demo Only**")
