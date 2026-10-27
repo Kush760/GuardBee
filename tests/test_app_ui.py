@@ -66,8 +66,9 @@ class TestGuardBeeUI(unittest.TestCase):
     def test_dashboard_and_every_incident_render(self):
         dashboard = start_app()
         self.assertFalse(dashboard.exception)
-        self.assertEqual(dashboard.title[0].value, "GuardBee")
-        self.assertIn("Demo only", page_text(dashboard))
+        self.assertEqual(len(dashboard.get("image")), 1)  # the GuardBee logo replaces the text title
+        self.assertIn("AI-Powered Security Analysis", page_text(dashboard))
+        self.assertIn("Demo Only", page_text(dashboard))
         for incident_id in ("INC-1001", "INC-1002", "INC-1003"):
             with self.subTest(incident=incident_id):
                 app = open_incident(incident_id)

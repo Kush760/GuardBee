@@ -32,9 +32,10 @@ from retrieval import DEFAULT_MIN_SIMILARITY, retrieve_policies
 from workflow import analysis_context_id, build_decision_record, can_record_decision
 
 ROOT = Path(__file__).parent
+ASSETS = ROOT / "assets"
 st.set_page_config(
     page_title="GuardBee | Security Analytics Console",
-    page_icon="🛡️",
+    page_icon=str(ASSETS / "guardbee_shield.png"),
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -422,7 +423,7 @@ def render_sidebar() -> None:
 # ---------------------------------------------------------------------------
 initialize_session()
 st.html(STYLES)
-logo = ROOT / "assets" / "guardbee_logo.svg"
+logo = ASSETS / "guardbee_logo.svg"
 if logo.exists():
     st.logo(str(logo), size="large")
 
@@ -498,7 +499,8 @@ def overview_donut(groups: list[tuple[str, int, str]]) -> None:
 def dashboard_page() -> None:
     head, notice = st.columns([3, 2], vertical_alignment="center")
     with head:
-        page_header("GuardBee", "AI-Powered Security Analysis for Safer Access")
+        st.image(str(ASSETS / "guardbee_logo_full.png"), width=320)
+        st.caption("**AI-Powered Security Analysis for Safer Access**")
     with card(notice, "dash-demo"):
         st.markdown("**:material/error: Demo Only**")
         st.caption(
