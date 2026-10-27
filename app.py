@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import altair as alt
+import pandas as pd
 import streamlit as st
 
 from ai_client import (
@@ -53,6 +54,8 @@ SEVERITY_COLORS = {"HIGH": "red", "MEDIUM": "orange", "LOW": "blue"}
 # Card tints (see the tone-* rules in STYLES); they follow engine output, never invent it.
 CLASSIFICATION_TONES = {"SUSPICIOUS": "red", "NORMAL": "green", "INSUFFICIENT_EVIDENCE": "amber"}
 SEVERITY_TONES = {"HIGH": "red", "MEDIUM": "amber", "LOW": "blue"}
+# Same hues as the tone-* card values; green stays reserved for the NORMAL classification.
+SEVERITY_HEX = {"HIGH": "#DC2626", "MEDIUM": "#D97706", "LOW": "#2563EB", "Not assigned": "#64748B"}
 # Keyed containers (needed for per-card tints) arrived in newer Streamlit; older ones stay untinted.
 CONTAINER_TAKES_KEY = "key" in inspect.signature(st.container).parameters
 DECISION_LABELS = {"APPROVED": "✅ APPROVED", "REJECTED": "⛔ REJECTED"}
@@ -88,6 +91,10 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [class*="st-key-dash-"] h3 { font-size: 1.05rem !important; font-weight: 700; padding: 0 0 0.35rem !important; }
 [data-testid="stMain"] [class*="st-key-tone-"] { min-height: 142px; }
 .st-key-dash-severity, .st-key-dash-risk { min-height: 262px; }
+.st-key-sev-high [data-testid="stProgressBarTrack"] > div { background: #DC2626; }
+.st-key-sev-medium [data-testid="stProgressBarTrack"] > div { background: #D97706; }
+.st-key-sev-low [data-testid="stProgressBarTrack"] > div { background: #2563EB; }
+.st-key-sev-none [data-testid="stProgressBarTrack"] > div { background: #64748B; }
 
 /* Sidebar */
 [data-testid="stSidebar"] {
@@ -359,7 +366,7 @@ def metric_card(
 
 
 def incident_table(incident_list: list[dict[str, Any]], show_latest: bool = True) -> None:
-    st.dataframe(
+    rows = pd.DataFrame(
         [
             {
                 "Incident": incident["id"],
@@ -371,7 +378,13 @@ def incident_table(incident_list: list[dict[str, Any]], show_latest: bool = True
                 **({"Latest event (UTC)": latest_event_time(incident)} if show_latest else {}),
             }
             for incident in incident_list
-        ],
+        ]
+    )
+    severity_style = rows.style.map(
+        lambda value: f"color: {SEVERITY_HEX.get(value, '#64748B')}; font-weight: 700", subset=["Severity"]
+    )
+    st.dataframe(
+        severity_style,
         hide_index=True,
         column_config={
             "Incident": st.column_config.TextColumn("Incident", width="small"),
@@ -488,7 +501,9 @@ def dashboard_page() -> None:
             if label is None and not count:
                 continue
             name = label.title() if label else NOT_ASSIGNED
-            st.progress(count / len(incidents), text=f"{name} · {count} of {len(incidents)}")
+            row_key = f"sev-{(label or 'none').lower()}"
+            with st.container(key=row_key) if CONTAINER_TAKES_KEY else st.container():
+                st.progress(count / len(incidents), text=f"{name} · {count} of {len(incidents)}")
         if any_classified:
             st.caption(
                 " · ".join(
@@ -516,9 +531,15 @@ def dashboard_page() -> None:
             y=alt.Y("Incident:N", sort="-x", title=None),
             tooltip=["Incident:N", "Title:N", "Risk score:Q", "Severity:N"],
         )
-        chart = bars.mark_bar(color="#4F46E5", cornerRadiusEnd=4, height=18) + bars.mark_text(
-            align="left", dx=6, color="#14213D", fontWeight=600
-        ).encode(text="Risk score:Q")
+        # Colour carries severity; the bar label repeats it in text so colour is never the only cue.
+        severity_colour = alt.Color(
+            "Severity:N",
+            scale=alt.Scale(domain=list(SEVERITY_HEX), range=list(SEVERITY_HEX.values())),
+            legend=None,
+        )
+        chart = bars.mark_bar(cornerRadiusEnd=4, height=18).encode(color=severity_colour) + bars.transform_calculate(
+            label="datum['Risk score'] + ' · ' + datum.Severity"
+        ).mark_text(align="left", dx=6, color="#14213D", fontWeight=600).encode(text="label:N")
         st.altair_chart(
             chart.properties(height=150, padding={"left": 4, "right": 16, "top": 4, "bottom": 4})
             .configure_view(stroke=None)
