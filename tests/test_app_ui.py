@@ -98,7 +98,9 @@ class TestGuardBeeUI(unittest.TestCase):
     def test_search_filters_incident_list(self):
         app = open_incident("INC-1001")
         app.text_input(key="incident_search").input("unfamiliar login").run()
-        self.assertEqual(app.radio(key="incident_picker").options, ["INC-1002 (40/100) — Unfamiliar login requires review"])
+        options = app.radio(key="incident_picker").options
+        self.assertEqual(len(options), 1)
+        self.assertIn("**INC-1002**", options[0])
         self.assertEqual(app.radio(key="incident_picker").value, "INC-1002")
         app.selectbox(key="incident_filter").set_value("High severity").run()
         self.assertIn("No incidents match", page_text(app))
@@ -110,7 +112,7 @@ class TestGuardBeeUI(unittest.TestCase):
         self.assertIn("NOT CLASSIFIED", text)
         self.assertNotIn("green-background[NORMAL]", text)
         self.assertIn("not a probability", text)
-        self.assertEqual(metric_values(app)["Classification"], "—")
+        self.assertEqual(metric_values(app)["Priority"], "—")
 
     def test_engine_classification_priority_and_unassigned_severity_render(self):
         original = engine.analyze_incident
@@ -137,7 +139,7 @@ class TestGuardBeeUI(unittest.TestCase):
             unclear = open_incident("INC-1002")
             self.assertIn("not sufficient to classify this activity", page_text(unclear))
             self.assertNotIn("SUSPICIOUS", page_text(unclear))
-            self.assertEqual(metric_values(unclear)["Investigation priority"], "Routine review")
+            self.assertEqual(metric_values(unclear)["Priority"], "Routine review")
 
     # -- Evidence -------------------------------------------------------------------
     def test_timeline_is_chronological_and_rules_match_engine(self):
