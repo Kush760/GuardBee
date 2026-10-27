@@ -282,6 +282,9 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
   font-size: 0.86rem; line-height: 1.45; }
 [data-testid="stDialog"] [data-testid="stVerticalBlock"] [data-testid="stMarkdownContainer"] li { margin-bottom: 0.1rem; }
 [data-testid="stDialog"] [data-testid="stVerticalBlockBorderWrapper"] { padding: 0.65rem 0.8rem; }
+.st-key-report-scroll { max-height: min(440px, calc(100vh - 260px)); overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 0.4rem; border-top: 1px solid var(--gb-border); border-bottom: 1px solid var(--gb-border);
+  padding-top: 0.6rem; padding-bottom: 0.6rem; scrollbar-width: thin; }
 
 /* Responsive layout: rows react to the width of the content area (sidebar excluded), not the window. */
 [data-testid="stMainBlockContainer"],
@@ -863,7 +866,8 @@ def full_report_dialog(incident_id: str) -> None:
         f"{tone_icon(analysis)} **{md(incident_id)}** · {md(incident['title'])}  \n"
         f"Risk score **{analysis['risk_score']} / 100** · Severity {severity_badge(analysis)}"
     )
-    render_rules(incident, analysis, scope="dialog")
+    with keyed(st, "report-scroll"):  # only the report body scrolls; summary and note stay put
+        render_rules(incident, analysis, scope="dialog")
     st.caption(RISK_NOTE)
 
 
