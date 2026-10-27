@@ -210,6 +210,23 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [data-testid="stSidebarNavLink"][aria-current="page"] span { color: #FFFFFF; font-weight: 650; }
 [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"],
 [data-testid="stSidebar"] .gb-sidebar-card { background: var(--gb-sidebar-panel); border-color: #26344D !important; }
+/* Navigation at the top, cards pinned to the bottom, slim scrollbar */
+[data-testid="stSidebarContent"] { display: flex; flex-direction: column;
+  scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
+[data-testid="stSidebarContent"]::-webkit-scrollbar { width: 6px; }
+[data-testid="stSidebarContent"]::-webkit-scrollbar-track { background: transparent; }
+[data-testid="stSidebarContent"]::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); border-radius: 6px; }
+[data-testid="stSidebarUserContent"] { margin-top: auto; padding-top: 1rem !important; padding-bottom: 1rem !important; }
+[data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] { gap: 0.75rem; }
+[data-testid="stSidebar"] .st-key-sidebar-ai, [data-testid="stSidebar"] .st-key-sidebar-demo { gap: 0.4rem !important; }
+[data-testid="stSidebar"] .st-key-sidebar-ai { background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important; border-radius: 12px; }
+[data-testid="stSidebar"] .st-key-sidebar-ai [data-testid="stCaptionContainer"] p,
+[data-testid="stSidebar"] .st-key-sidebar-demo [data-testid="stCaptionContainer"] p { font-size: 0.8rem; line-height: 1.45; }
+[data-testid="stSidebar"] .st-key-sidebar-ai [data-testid="stCaptionContainer"],
+[data-testid="stSidebar"] .st-key-sidebar-demo [data-testid="stCaptionContainer"] { margin-bottom: -0.35rem; }
+[data-testid="stSidebarUserContent"] > div > [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:last-child
+  [data-testid="stCaptionContainer"] p { color: #64748B; font-size: 0.75rem; text-align: center; }
 [data-testid="stSidebar"] hr { border-color: #1E293B; }
 [data-testid="stSidebar"] .st-key-sidebar-demo {
   background: linear-gradient(135deg, #3730A3 0%, #4F46E5 55%, #6D28D9 100%) !important;
@@ -452,19 +469,18 @@ def empty_state(message: str, icon: str = "ℹ️") -> None:
 
 def render_sidebar() -> None:
     with st.sidebar:
-        st.divider()
         with card(st, "sidebar-demo"):
-            st.markdown("**⚠️ Demo only**")
-            st.caption(
-                "Synthetic incidents and simulated decisions. No live monitoring and no real account actions."
-            )
-        st.markdown("**AI provider**")
-        if read_api_key():
-            st.caption("🟢 Nebius API key configured")
-        else:
-            st.caption("🟠 No Nebius API key — AI reports will show an error")
-        st.caption(f"Model: {md(read_model())}")
-        st.caption(f"Simulated decisions this session: {len(st.session_state.audit)}")
+            st.markdown("**:material/info: Demo only**")
+            st.caption("Synthetic incidents and simulated decisions. No live monitoring or real account actions.")
+        with card(st, "sidebar-ai"):
+            st.markdown("**:material/auto_awesome: AI provider**")
+            if read_api_key():
+                st.caption(":green[●] Nebius API key configured")
+            else:
+                st.caption(":orange[●] No Nebius API key — AI reports will show an error")
+            st.caption(f"Model · {md(read_model())}")
+            st.caption(f"Simulated decisions this session · **{len(st.session_state.audit)}**")
+        st.caption(":material/shield: GuardBee · Synthetic demo")
 
 
 # ---------------------------------------------------------------------------
