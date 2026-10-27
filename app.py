@@ -86,6 +86,10 @@ STYLES = """
 html, body, .stApp { font-family: Inter, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
 .stApp { background: var(--gb-bg); }
 [data-testid="stMainBlockContainer"] { padding-top: 2rem; padding-bottom: 3rem; max-width: 1360px; }
+/* Collapsed sidebar: the top bar shows the logo icon, so give it a surface and push content below it. */
+.stApp:has([data-testid="stSidebar"][data-collapsed="true"]) [data-testid="stHeader"] {
+  background: rgba(244, 247, 252, 0.94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--gb-border); }
+.stApp:has([data-testid="stSidebar"][data-collapsed="true"]) [data-testid="stMainBlockContainer"] { padding-top: 5rem; }
 h1, h2, h3, h4 { color: var(--gb-text); letter-spacing: -0.01em; }
 h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.15rem !important; }
 [data-testid="stMain"] [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p { font-size: 0.92rem; }
@@ -132,7 +136,8 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [data-testid="stSidebar"] {
   background: linear-gradient(180deg, #0B1220 0%, #0F1730 45%, #1A1E4A 80%, #2B2675 100%);
   border-right: 1px solid #1E293B; }
-@media (min-width: 992px) { [data-testid="stSidebar"] { min-width: 248px !important; max-width: 248px !important; } }
+@media (min-width: 992px) {
+  [data-testid="stSidebar"]:not([data-collapsed="true"]) { min-width: 248px !important; max-width: 248px !important; } }
 [data-testid="stSidebar"] p, [data-testid="stSidebar"] li, [data-testid="stSidebar"] label,
 [data-testid="stSidebar"] span, [data-testid="stSidebar"] small { color: #CBD5E1; }
 [data-testid="stSidebar"] strong { color: #FFFFFF; }
@@ -425,7 +430,7 @@ initialize_session()
 st.html(STYLES)
 logo = ASSETS / "guardbee_logo.svg"
 if logo.exists():
-    st.logo(str(logo), size="large")
+    st.logo(str(logo), size="large", icon_image=str(ASSETS / "guardbee_shield.png"))
 
 try:
     with st.spinner("Loading synthetic incidents..."):
