@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any
 
 import altair as alt
-import pandas as pd
 import streamlit as st
 
 from ai_client import (
@@ -56,6 +55,9 @@ CLASSIFICATION_TONES = {"SUSPICIOUS": "red", "NORMAL": "green", "INSUFFICIENT_EV
 SEVERITY_TONES = {"HIGH": "red", "MEDIUM": "amber", "LOW": "blue"}
 # Same hues as the tone-* card values; green stays reserved for the NORMAL classification.
 SEVERITY_HEX = {"HIGH": "#DC2626", "MEDIUM": "#D97706", "LOW": "#2563EB", "Not assigned": "#64748B"}
+CLASSIFICATION_HEX = {"SUSPICIOUS": "#DC2626", "NORMAL": "#16A34A", "INSUFFICIENT_EVIDENCE": "#D97706"}
+# Markdown colour names for legend dots, matched to the chart hues above.
+LEGEND_DOTS = {"#DC2626": "red", "#16A34A": "green", "#D97706": "orange", "#2563EB": "blue", "#64748B": "gray"}
 # Keyed containers (needed for per-card tints) arrived in newer Streamlit; older ones stay untinted.
 CONTAINER_TAKES_KEY = "key" in inspect.signature(st.container).parameters
 DECISION_LABELS = {"APPROVED": "✅ APPROVED", "REJECTED": "⛔ REJECTED"}
@@ -87,14 +89,43 @@ h1, h2, h3, h4 { color: var(--gb-text); letter-spacing: -0.01em; }
 h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.15rem !important; }
 [data-testid="stMain"] [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p { font-size: 0.92rem; }
 
-/* Dashboard: compact card headings and equal-height KPI cards */
-[class*="st-key-dash-"] h3 { font-size: 1.05rem !important; font-weight: 700; padding: 0 0 0.35rem !important; }
-[data-testid="stMain"] [class*="st-key-tone-"] { min-height: 142px; }
-.st-key-dash-severity, .st-key-dash-risk { min-height: 262px; }
-.st-key-sev-high [data-testid="stProgressBarTrack"] > div { background: #DC2626; }
-.st-key-sev-medium [data-testid="stProgressBarTrack"] > div { background: #D97706; }
-.st-key-sev-low [data-testid="stProgressBarTrack"] > div { background: #2563EB; }
-.st-key-sev-none [data-testid="stProgressBarTrack"] > div { background: #64748B; }
+/* Dashboard (mockup layout) */
+[class*="st-key-dash-"] h3 { font-size: 1.05rem !important; font-weight: 700; padding: 0 0 0.25rem !important; }
+[data-testid="stMain"] [class*="st-key-tone-"] { min-height: 132px; }
+[class*="st-key-tone-"][class*="-kpi-"] { position: relative; padding-left: 3.9rem !important; min-height: 176px; }
+[class*="st-key-tone-"][class*="-kpi-"] [data-testid="stMetricLabel"] p { text-transform: none; letter-spacing: 0;
+  font-size: 0.8rem; font-weight: 700; }
+[class*="st-key-kpi-icon-"] { position: absolute !important; left: 1rem; top: 1.1rem; width: 38px !important;
+  height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+[class*="st-key-kpi-icon-"] { gap: 0 !important; padding: 0 !important; }
+[class*="st-key-kpi-icon-"] > div { width: auto !important; }
+[class*="st-key-kpi-icon-"] [data-testid="stMarkdownContainer"], [class*="st-key-kpi-icon-"] p { margin: 0 !important; line-height: 1; }
+[class*="st-key-kpi-icon-"] span[role="img"] { font-size: 1.3rem; color: inherit; }
+[class*="st-key-kpi-icon-red"] { background: #FECACA; color: #DC2626; }
+[class*="st-key-tone-red-kpi"] [data-testid="stMetricLabel"] p { color: #DC2626; }
+[class*="st-key-kpi-icon-green"] { background: #BBF7D0; color: #16A34A; }
+[class*="st-key-tone-green-kpi"] [data-testid="stMetricLabel"] p { color: #16A34A; }
+[class*="st-key-kpi-icon-amber"] { background: #FDE68A; color: #B45309; }
+[class*="st-key-tone-amber-kpi"] [data-testid="stMetricLabel"] p { color: #D97706; }
+[class*="st-key-kpi-icon-blue"] { background: #BFDBFE; color: #2563EB; }
+[class*="st-key-tone-blue-kpi"] [data-testid="stMetricLabel"] p { color: #2563EB; }
+[class*="st-key-kpi-icon-violet"] { background: #DDD6FE; color: #6D28D9; }
+[class*="st-key-tone-violet-kpi"] [data-testid="stMetricLabel"] p { color: #6D28D9; }
+.st-key-dash-demo { background: #FEF2F2 !important; border-color: #FECACA !important; }
+.st-key-dash-demo p, .st-key-dash-demo [data-testid="stCaptionContainer"] { color: #B91C1C !important; }
+.st-key-dash-overview, .st-key-dash-recent { min-height: 318px; }
+.st-key-dash-thead { border-bottom: 1px solid var(--gb-border); }
+.st-key-dash-thead [data-testid="stCaptionContainer"] { font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; font-size: 0.72rem; }
+[class*="st-key-dash-row-"] { border-bottom: 1px solid #EEF2F7; padding: 0.1rem 0 0.35rem; }
+[class*="st-key-dash-row-"] p { font-size: 0.86rem; margin-bottom: 0; }
+[class*="st-key-dash_view_"] button { min-height: 1.9rem; padding: 0.1rem 0.5rem; font-size: 0.8rem; }
+.st-key-dash_view_all button { background: transparent; border: none; color: var(--gb-accent);
+  box-shadow: none; justify-content: flex-end; }
+.st-key-dash-source { background: #EEF4FF !important; border-color: #C7D7FE !important; }
+.st-key-dash-source { padding: 0.7rem 1rem !important; }
+.st-key-dash-source [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
+.st-key-dash-source p { margin: 0; font-size: 0.88rem; color: #1E3A8A; }
 
 /* Sidebar */
 [data-testid="stSidebar"] {
@@ -336,17 +367,9 @@ def latest_event_time(incident: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # Reusable components
 # ---------------------------------------------------------------------------
-def page_header(title: str, subtitle: str, description: str) -> None:
+def page_header(title: str, subtitle: str, description: str = "") -> None:
     st.title(title)
-    st.caption(f"**{subtitle}** · {description}")
-
-
-def demo_banner() -> None:
-    st.warning(
-        "**Demo only — simulated environment.** Synthetic incidents from a static JSON file; "
-        "GuardBee never blocks accounts, revokes sessions, or changes any system.",
-        icon="⚠️",
-    )
+    st.caption(f"**{subtitle}** · {description}" if description else f"**{subtitle}**")
 
 
 def card(parent: Any = st, key: str | None = None) -> Any:
@@ -363,41 +386,6 @@ def metric_card(
     with card(column, key):
         st.metric(label, value, help=help_text)
         st.caption(caption)
-
-
-def incident_table(incident_list: list[dict[str, Any]], show_latest: bool = True) -> None:
-    rows = pd.DataFrame(
-        [
-            {
-                "Incident": incident["id"],
-                "Title": incident["title"],
-                "Classification": short_text(classification_text(analyses[incident["id"]])),
-                "Risk score": analyses[incident["id"]]["risk_score"],
-                "Severity": severity_text(analyses[incident["id"]]),
-                "Priority": short_text(priority_text(analyses[incident["id"]])),
-                **({"Latest event (UTC)": latest_event_time(incident)} if show_latest else {}),
-            }
-            for incident in incident_list
-        ]
-    )
-    severity_style = rows.style.map(
-        lambda value: f"color: {SEVERITY_HEX.get(value, '#64748B')}; font-weight: 700", subset=["Severity"]
-    )
-    st.dataframe(
-        severity_style,
-        hide_index=True,
-        column_config={
-            "Incident": st.column_config.TextColumn("Incident", width="small"),
-            "Title": st.column_config.TextColumn("Title"),
-            "Classification": st.column_config.TextColumn("Classification"),
-            "Risk score": st.column_config.ProgressColumn(
-                "Risk score", min_value=0, max_value=100, format="%d", help=RISK_NOTE, width="small"
-            ),
-            "Severity": st.column_config.TextColumn("Severity", width="small"),
-            "Priority": st.column_config.TextColumn("Priority", width="small"),
-            "Latest event (UTC)": st.column_config.TextColumn("Latest event (UTC)"),
-        },
-    )
 
 
 def empty_state(message: str, icon: str = "ℹ️") -> None:
@@ -462,110 +450,143 @@ if st.session_state.current_incident_id not in incident_by_id:
 # ---------------------------------------------------------------------------
 # Page 1 - Dashboard
 # ---------------------------------------------------------------------------
-def dashboard_page() -> None:
-    page_header(
-        "GuardBee",
-        "Security Analytics Console",
-        "Synthetic login incidents from data/incidents.json, analysed by the deterministic rules engine.",
-    )
-    demo_banner()
+def keyed(parent: Any, key: str) -> Any:
+    """Unbordered container with an st-key-* class for the stylesheet (plain on older Streamlit)."""
+    return parent.container(key=key) if CONTAINER_TAKES_KEY else parent.container()
 
-    # Row 1: KPI cards. Short captions keep every card one height at laptop widths.
-    cards = st.columns(5, gap="small")
-    metric_card(cards[0], "Valid incidents", len(incidents), "Loaded and validated", tone="blue")
-    if any_classified:
-        for column, key, caption in zip(
-            cards[1:4],
-            ("SUSPICIOUS", "NORMAL", "INSUFFICIENT_EVIDENCE"),
-            ("Suspicious pattern", "No pattern found", "Cannot classify"),
-        ):
-            count = sum(1 for analysis in analyses.values() if classification_of(analysis) == key)
-            metric_card(column, key.replace("_", " ").title(), count, caption, tone=CLASSIFICATION_TONES[key])
-    else:
-        for column, label, tone in zip(
-            cards[1:4], ("Suspicious", "Normal", "Insufficient evidence"), ("red", "green", "amber")
-        ):
-            metric_card(column, label, "—", "Not classified yet", tone=tone)
-    metric_card(
-        cards[4], "Validation", "Passed", "0 rejected",
-        help_text="Every record must pass validation or loading stops. Partial processing is not implemented yet.",
-        tone="violet",
-    )
 
-    # Row 2: severity breakdown beside the per-incident risk scores.
-    left, right = st.columns([2, 3], gap="small")
-    with card(left, "dash-severity"):
-        st.subheader("Severity distribution")
-        for label in ("HIGH", "MEDIUM", "LOW", None):
-            count = sum(1 for analysis in analyses.values() if analysis.get("severity") == label)
-            if label is None and not count:
-                continue
-            name = label.title() if label else NOT_ASSIGNED
-            row_key = f"sev-{(label or 'none').lower()}"
-            with st.container(key=row_key) if CONTAINER_TAKES_KEY else st.container():
-                st.progress(count / len(incidents), text=f"{name} · {count} of {len(incidents)}")
-        if any_classified:
-            st.caption(
-                " · ".join(
-                    f"{key.replace('_', ' ').title()}: "
-                    f"{sum(1 for analysis in analyses.values() if classification_of(analysis) == key)}"
-                    for key in CLASSIFICATIONS
-                )
-            )
-        else:
-            st.caption("Classification: engine.py does not classify yet; GuardBee never infers one from the score.")
+def slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
-    with card(right, "dash-risk"):
-        st.subheader("Risk score by incident")
-        scores = [
-            {
-                "Incident": incident["id"],
-                "Title": incident["title"],
-                "Risk score": analyses[incident["id"]]["risk_score"],
-                "Severity": severity_text(analyses[incident["id"]]),
-            }
-            for incident in incidents
-        ]
-        bars = alt.Chart(alt.Data(values=scores)).encode(
-            x=alt.X("Risk score:Q", scale=alt.Scale(domain=[0, 100]), axis=alt.Axis(tickCount=5), title=None),
-            y=alt.Y("Incident:N", sort="-x", title=None),
-            tooltip=["Incident:N", "Title:N", "Risk score:Q", "Severity:N"],
-        )
-        # Colour carries severity; the bar label repeats it in text so colour is never the only cue.
-        severity_colour = alt.Color(
-            "Severity:N",
-            scale=alt.Scale(domain=list(SEVERITY_HEX), range=list(SEVERITY_HEX.values())),
-            legend=None,
-        )
-        chart = bars.mark_bar(cornerRadiusEnd=4, height=18).encode(color=severity_colour) + bars.transform_calculate(
-            label="datum['Risk score'] + ' · ' + datum.Severity"
-        ).mark_text(align="left", dx=6, color="#14213D", fontWeight=600).encode(text="label:N")
-        st.altair_chart(
-            chart.properties(height=150, padding={"left": 4, "right": 16, "top": 4, "bottom": 4})
-            .configure_view(stroke=None)
-            .configure_axis(
-                labelColor="#64748B", titleColor="#64748B", gridColor="#EEF2F7", domainColor="#E2E8F0"
+
+def percent(count: int) -> str:
+    return f"{count / len(incidents):.1%}"
+
+
+def kpi_card(
+    column: Any, label: str, value: Any, caption: str, tone: str, icon: str, help_text: str | None = None
+) -> None:
+    with card(column, f"tone-{tone}-kpi-{slug(label)}"):
+        with keyed(st, f"kpi-icon-{tone}-{slug(label)}"):
+            st.markdown(f":material/{icon}:")
+        st.metric(label, value, help=help_text)
+        st.caption(caption)
+
+
+def overview_donut(groups: list[tuple[str, int, str]]) -> None:
+    """Donut of engine counts with the total in the middle; the legend beside it carries the labels."""
+    rows = [{"Group": name, "Count": count} for name, count, _ in groups]
+    arcs = (
+        alt.Chart(alt.Data(values=rows))
+        .mark_arc(innerRadius=56, outerRadius=82, stroke="#FFFFFF", strokeWidth=2)
+        .encode(
+            theta=alt.Theta("Count:Q", stack=True),
+            color=alt.Color(
+                "Group:N",
+                scale=alt.Scale(domain=[name for name, _, _ in groups], range=[hex_ for _, _, hex_ in groups]),
+                legend=None,
             ),
+            tooltip=["Group:N", "Count:Q"],
         )
-        st.caption("Rule-based score, not a probability. Hover a bar for details.")
+    )
+    centre = alt.Chart(alt.Data(values=[{"total": str(len(incidents)), "label": "Total incidents"}]))
+    total = centre.mark_text(fontSize=26, fontWeight=700, color="#14213D", dy=-8).encode(text="total:N")
+    label = centre.mark_text(fontSize=11, color="#64748B", dy=14).encode(text="label:N")
+    st.altair_chart((arcs + total + label).properties(height=190).configure_view(stroke=None))
 
-    # Row 3: full-width table so titles are not truncated; open action sits in the header row.
-    with card(st, "dash-recent"):
-        heading, pick, action = st.columns([4, 4, 2], vertical_alignment="bottom")
-        with heading:
-            st.subheader("Recent incidents")
-            st.caption("Newest activity first · — = not provided by the engine yet")
-        recent = sorted(incidents, key=lambda incident: latest_event_time(incident), reverse=True)
-        chosen = pick.selectbox(
-            "Select an incident",
-            [incident["id"] for incident in recent],
-            format_func=lambda identifier: f"{identifier} · {incident_by_id[identifier]['title']}",
-            key="dashboard_pick",
-            label_visibility="collapsed",
+
+def dashboard_page() -> None:
+    head, notice = st.columns([3, 2], vertical_alignment="center")
+    with head:
+        page_header("GuardBee", "AI-Powered Security Analysis for Safer Access")
+    with card(notice, "dash-demo"):
+        st.markdown("**:material/error: Demo Only**")
+        st.caption(
+            "This is a demo tool. It does not provide live monitoring, blocking, or actual containment of accounts."
         )
-        if action.button("Investigate →", key="dashboard_open", type="primary"):
-            go_to_incident(chosen)
-        incident_table(recent)
+
+    # Row 1: KPI cards
+    cards = st.columns(5, gap="small")
+    kpi_card(cards[0], "Total valid incidents", len(incidents), "From dataset", "blue", "verified_user")
+    for column, key, icon in zip(
+        cards[1:4], ("SUSPICIOUS", "NORMAL", "INSUFFICIENT_EVIDENCE"), ("gpp_maybe", "gpp_good", "help")
+    ):
+        if any_classified:
+            count = sum(1 for analysis in analyses.values() if classification_of(analysis) == key)
+            value, caption = count, percent(count)
+            label = key.replace("_", " ").title()
+        else:
+            value, caption = "—", "Not classified yet"
+            label = key.replace("_", " ").capitalize()
+        kpi_card(column, label, value, caption, CLASSIFICATION_TONES[key], icon)
+    kpi_card(
+        cards[4], "Rejected records", 0, "Fail-closed loader", "violet", "report",
+        help_text="Every record must pass validation or loading stops, so a loaded dataset has no rejected "
+        "records. Partial processing is not implemented yet.",
+    )
+
+    # Row 2: overview donut and recent incidents
+    left, right = st.columns([5, 7], gap="small")
+    with card(left, "dash-overview"):
+        st.subheader("Incident Overview")
+        if any_classified:
+            groups = [
+                (
+                    key.replace("_", " ").title(),
+                    sum(1 for analysis in analyses.values() if classification_of(analysis) == key),
+                    hex_,
+                )
+                for key, hex_ in CLASSIFICATION_HEX.items()
+            ]
+            st.caption("By classification from engine.py")
+        else:
+            groups = [
+                (name.title() if name != NOT_ASSIGNED else name,
+                 sum(1 for analysis in analyses.values() if severity_text(analysis) == name), hex_)
+                for name, hex_ in SEVERITY_HEX.items()
+            ]
+            groups = [group for group in groups if group[1] or group[0] != NOT_ASSIGNED]
+            st.caption("By severity — engine.py does not classify yet, and GuardBee never infers a class.")
+        chart, legend = st.columns([1, 1], vertical_alignment="center")
+        with chart:
+            overview_donut(groups)
+        with legend:
+            for name, count, hex_ in groups:
+                dot = LEGEND_DOTS.get(hex_, "gray")
+                st.markdown(f":{dot}[●] {name} · **{count}** ({percent(count)})")
+
+    with card(right, "dash-recent"):
+        st.subheader("Recent Incidents")
+        recent = sorted(incidents, key=latest_event_time, reverse=True)[:5]
+        widths = [1.5, 2.3, 1, 1.6, 1.2, 1.3]
+        with keyed(st, "dash-thead"):
+            for column, heading in zip(
+                st.columns(widths, vertical_alignment="center"),
+                ("ID", "Classification", "Score", "Severity", "Priority", ""),
+            ):
+                column.caption(heading)
+        for incident in recent:
+            analysis = analyses[incident["id"]]
+            with keyed(st, f"dash-row-{slug(incident['id'])}"):
+                row = st.columns(widths, vertical_alignment="center")
+                row[0].markdown(f"**{md(incident['id'])}**")
+                row[1].markdown(classification_badge(analysis))
+                row[2].markdown(f"**{analysis['risk_score']}**")
+                row[3].markdown(severity_badge(analysis))
+                priority = analysis.get("investigation_priority")
+                row[4].markdown(f":violet-background[{md(priority)}]" if priority else "—")
+                if row[5].button("View", key=f"dash_view_{incident['id']}"):
+                    go_to_incident(incident["id"])
+        _, more = st.columns([3, 1])
+        if more.button("View All →", key="dash_view_all"):
+            st.switch_page(INCIDENTS_PAGE)
+
+    # Row 3: data source strip
+    with card(st, "dash-source"):
+        st.markdown(
+            ":blue[:material/info:] **Data Source:** Static synthetic JSON file (data/incidents.json)"
+            " · Not real-time monitoring"
+        )
 
 
 # ---------------------------------------------------------------------------

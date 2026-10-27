@@ -2,25 +2,26 @@
 
 ## Recorded automated result
 
-The current codebase contains 70 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
+The current codebase contains 71 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Recorded result (`dev` branch, Security Analytics Console UI): **70 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
+Recorded result (`dev` branch, Security Analytics Console UI): **71 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
 
 All tests are offline. Provider tests use mocks or an in-process `httpx.MockTransport` and never contact Nebius. UI tests replace `ai_client.generate_report` with a mock that fails the test if any path tries to reach the provider, even when a local `.streamlit/secrets.toml` exists.
 
 ## Test inventory
 
-### `TestGuardBeeUI` (14) — headless Streamlit `AppTest`
+### `TestGuardBeeUI` (15) — headless Streamlit `AppTest`
 
-Pages are reached through the app's own controls (Dashboard "Investigate", decision panel "View in Audit History", Audit History "Open incident"), so navigation buttons are exercised too.
+Pages are reached through the app's own controls (Dashboard Recent Incidents "View" and "View All", decision panel "View in Audit History", Audit History "Open incident"), so navigation buttons are exercised too.
 
 - `test_dashboard_and_every_incident_render`
 - `test_app_injects_no_dynamic_html`
 - `test_dashboard_counts_come_from_engine`
+- `test_view_all_opens_security_incidents`
 - `test_search_filters_incident_list`
 - `test_unclassified_engine_output_is_never_labelled`
 - `test_engine_classification_priority_and_unassigned_severity_render`
@@ -33,7 +34,7 @@ Pages are reached through the app's own controls (Dashboard "Investigate", decis
 - `test_invalid_citations_keep_decision_locked`
 - `test_provider_failure_offers_retry_without_fabricating`
 
-Manual visual check (headless Microsoft Edge screenshots, 1440px and 1280px wide): all three pages, every investigation tab, and the generated-report and recorded-decision states (using a canned report, no provider call). The dashboard fits a 1440×900 viewport without scrolling; at 1280px its KPI cards stay one height and every table column is visible. Narrower than about 1100px, metric labels truncate with an ellipsis; their full text remains in the tooltip.
+Manual visual check (headless Microsoft Edge screenshots, 1440px and 1280px wide): all three pages, every investigation tab, and the generated-report and recorded-decision states (using a canned report, no provider call). The dashboard fits a 1440×900 viewport without scrolling; at 1280px its KPI cards stay one height and every Recent Incidents column is visible. Narrower than about 1100px, metric labels truncate with an ellipsis; their full text remains in the tooltip.
 
 UI specification checklist items that cannot be tested until the backend provides them: engine-produced NORMAL / INSUFFICIENT_EVIDENCE results for real incidents, partial validation with rejected-record reporting, and audit history that survives an app restart (SQLite). The classification and priority display is tested with a patched engine result.
 

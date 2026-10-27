@@ -20,10 +20,9 @@ def start_app():
 
 
 def open_incident(incident_id):
-    """Reach an incident the way an analyst does: Dashboard -> Investigate."""
+    """Reach an incident the way an analyst does: Dashboard -> Recent Incidents -> View."""
     app = start_app()
-    app.selectbox(key="dashboard_pick").set_value(incident_id).run()
-    app.button(key="dashboard_open").click().run()
+    app.button(key=f"dash_view_{incident_id}").click().run()
     return app
 
 
@@ -83,10 +82,17 @@ class TestGuardBeeUI(unittest.TestCase):
 
     def test_dashboard_counts_come_from_engine(self):
         values = metric_values(start_app())
-        self.assertEqual(values["Valid incidents"], "3")
+        self.assertEqual(values["Total valid incidents"], "3")
         self.assertEqual(values["Suspicious"], "—")
         self.assertEqual(values["Normal"], "—")
         self.assertEqual(values["Insufficient evidence"], "—")
+        self.assertEqual(values["Rejected records"], "0")
+        self.assertIn("By severity", page_text(start_app()))  # no classification is inferred
+
+    def test_view_all_opens_security_incidents(self):
+        app = start_app()
+        app.button(key="dash_view_all").click().run()
+        self.assertEqual(app.title[0].value, "Security Incidents")
 
     def test_search_filters_incident_list(self):
         app = open_incident("INC-1001")
