@@ -1,0 +1,16 @@
+{
+  "id": "INC-1011",
+  "title": "Login event missing source IP",
+  "account": "unknown-device@example.test",
+  "department": "Operations",
+  "known_ips": [],
+  "events": [
+    {
+      "id": "EVT-408",
+      "time_utc": "2026-10-21T11:00:00Z",
+      "type": "login_success",
+      "ip": "",
+      "country": "Unknown"
+    }
+  ]
+}
