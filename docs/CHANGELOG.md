@@ -72,6 +72,7 @@
 - Incident header: the classification badge no longer touches the heading's icon tile (heading line height matches the tile, with a small gap below).
 - Event table: "Rule evidence" shows "✓ Evidence" or "—" instead of a read-only checkbox that looked clickable, and the table now spans the full width below the timeline so all seven columns fit. Audit History's "Simulation only" column shows "Yes"/"No" for the same reason.
 - Status card labels are larger (16px instead of 13px) and centred on their icon; every label has the same two-line slot so the numbers line up across cards.
+- Policy review fixes: POL-002 reworded to Finance account protection, so it no longer attaches to Operations and Engineering incidents, and it now states that department never changes score or priority, matching the engine; POL-003 reworded around analyst approval and the audit record, so it no longer tops a normal incident; new POL-005 covers spaced-out failed logins with no sign-in, so INC-1009 now has policy context and can request an AI report. The Relevant Policies tab shows each policy's investigation guidance. Two new retrieval tests guard that Finance guidance reaches only Finance incidents and that every incident has policy context. The suite is now 98 tests.
 
 ## Documentation and delivery assets
 

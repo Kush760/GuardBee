@@ -29,15 +29,15 @@ class TestPolicyRetrieval(unittest.TestCase):
     def test_bundled_incidents_retrieve_expected_policy_ids(self):
         expected = {
             "INC-1001": ["POL-001", "POL-002"],
-            "INC-1002": ["POL-001", "POL-004", "POL-002"],
+            "INC-1002": ["POL-001", "POL-004"],
             "INC-1003": ["POL-001"],
             "INC-1004": ["POL-001"],
-            "INC-1005": ["POL-003", "POL-001"],
+            "INC-1005": ["POL-001"],
             "INC-1006": ["POL-001"],
             "INC-1007": ["POL-001", "POL-004"],
-            "INC-1008": ["POL-001", "POL-002"],
-            "INC-1009": [],  # nothing clears the threshold, so the AI report stays unavailable
-            "INC-1010": ["POL-001", "POL-002", "POL-004"],
+            "INC-1008": ["POL-001"],
+            "INC-1009": ["POL-005"],
+            "INC-1010": ["POL-001", "POL-004"],
             "INC-1012": ["POL-001"],
             "INC-1013": ["POL-001", "POL-002"],
             "INC-1014": ["POL-001", "POL-004"],
@@ -49,6 +49,18 @@ class TestPolicyRetrieval(unittest.TestCase):
                 scores = [match["match_score"] for match in matches]
                 self.assertEqual(scores, sorted(scores, reverse=True))
                 self.assertTrue(all(score >= DEFAULT_MIN_SIMILARITY for score in scores))
+
+    def test_finance_policy_only_reaches_finance_incidents(self):
+        for incident in self.incidents:
+            with self.subTest(incident=incident["id"]):
+                ids = [match["id"] for match in retrieve_policies(incident_query(incident), self.policies)]
+                self.assertEqual("POL-002" in ids, incident["department"] == "Finance")
+
+    def test_every_bundled_incident_has_policy_context(self):
+        # Without a policy match the AI report is blocked, so every incident needs at least one.
+        for incident in self.incidents:
+            with self.subTest(incident=incident["id"]):
+                self.assertTrue(retrieve_policies(incident_query(incident), self.policies))
 
     def test_does_not_pad_results_with_below_threshold_policies(self):
         matches = retrieve_policies(incident_query(self.incidents[2]), self.policies)

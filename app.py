@@ -998,6 +998,8 @@ def render_policies(matched_policies: list[dict[str, Any]]) -> None:
         label = f"{policy['id']} · {policy['title']} · similarity {policy['match_score']:.3f}"
         with st.expander(md(label), expanded=index == 0):
             st.markdown(md(policy["text"]))
+            if policy.get("investigation_guidance"):
+                st.info(md(f"Investigation guidance: {policy['investigation_guidance']}"), icon="🧭")
 
 
 def render_ai_panel(

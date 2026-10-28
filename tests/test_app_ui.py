@@ -287,6 +287,11 @@ class TestGuardBeeUI(unittest.TestCase):
         self.assertIn("`https://evil.example`", shown)
         self.assertIn("\\<b>", shown)
 
+    def test_policy_tab_shows_investigation_guidance(self):
+        app = open_incident("INC-1009")  # only POL-005 matches; it used to have no policy at all
+        self.assertFalse(app.button(key="ai_request_btn").disabled)
+        self.assertTrue(any("Investigation guidance" in str(element.value) for element in app.info))
+
     def test_filter_options_show_match_counts(self):
         options = open_incident("INC-1001").selectbox(key="incident_filter").options
         self.assertIn("All (13)", options)

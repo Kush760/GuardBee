@@ -27,7 +27,7 @@ IDs are strings and unique per collection; event IDs are unique within an incide
 
 ## Policy collection
 
-`data/policies.json` is a non-empty array. Each `POL-*` record has a unique non-empty `id`, `title`, and `text`. `retrieval.py` adds a transient `match_score` only to in-memory retrieved records.
+`data/policies.json` is a non-empty array. Each `POL-*` record has a unique non-empty `id`, `title`, and `text`; optional `description`, `categories`, `conditions`, and `investigation_guidance` fields are passed to the AI, and `investigation_guidance` is shown in the Relevant Policies tab. Retrieval ranks on `title` and `text` only, so a policy's wording decides which incidents it reaches. The bundled set has five policies: POL-001 unusual login and unfamiliar IP response, POL-002 Finance account protection (matches only Finance incidents), POL-003 analyst approval and audit record, POL-004 evidence handling, and POL-005 spaced-out failed logins without a sign-in. Every bundled incident matches at least one policy, so none is blocked from an AI report. `retrieval.py` adds a transient `match_score` only to in-memory retrieved records.
 
 ## Deterministic assessment output
 
