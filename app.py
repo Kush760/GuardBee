@@ -117,6 +117,17 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [class*="st-key-kpi-icon-violet"] { background: #DDD6FE; color: #6D28D9; }
 [class*="st-key-tone-violet-kpi"] [data-testid="stMetricLabel"] p { color: #6D28D9; }
 .st-key-dash-overview, .st-key-dash-recent { min-height: 318px; }
+/* Overview: donut and legend centred in the card, legend as a row of small stat blocks. */
+.st-key-dash-overview { justify-content: space-between; }
+.st-key-overview-legend [data-testid="stColumn"] { text-align: center; border-left: 1px solid var(--gb-border); }
+.st-key-overview-legend [data-testid="stColumn"]:first-child { border-left: none; }
+.st-key-overview-legend p { font-size: 0.85rem; color: var(--gb-muted); margin: 0; line-height: 1.5;
+  text-align: center; }
+.st-key-overview-legend [data-testid="stMarkdownContainer"] { width: 100%; }
+.st-key-overview-legend strong { font-size: 1.35rem; color: var(--gb-text); }
+.st-key-overview-legend [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
+.st-key-overview-legend [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
+.st-key-overview-legend [data-testid="stColumn"] { min-width: 0 !important; }
 .st-key-dash-thead { border-bottom: 1px solid var(--gb-border); }
 .st-key-dash-thead [data-testid="stCaptionContainer"] { font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.04em; font-size: 0.72rem; }
@@ -658,11 +669,11 @@ def kpi_card(
 
 
 def overview_donut(groups: list[tuple[str, int, str]]) -> None:
-    """Donut of engine counts with the total in the middle; the legend beside it carries the labels."""
+    """Centred donut of engine counts with the total in the middle; the legend below carries the labels."""
     rows = [{"Group": name, "Count": count} for name, count, _ in groups]
     arcs = (
         alt.Chart(alt.Data(values=rows))
-        .mark_arc(innerRadius=56, outerRadius=82, stroke="#FFFFFF", strokeWidth=2)
+        .mark_arc(innerRadius=78, outerRadius=116, cornerRadius=6, padAngle=0.025, stroke="#FFFFFF", strokeWidth=2)
         .encode(
             theta=alt.Theta("Count:Q", stack=True),
             color=alt.Color(
@@ -674,9 +685,9 @@ def overview_donut(groups: list[tuple[str, int, str]]) -> None:
         )
     )
     centre = alt.Chart(alt.Data(values=[{"total": str(len(incidents)), "label": "Total incidents"}]))
-    total = centre.mark_text(fontSize=26, fontWeight=700, color="#14213D", dy=-8).encode(text="total:N")
-    label = centre.mark_text(fontSize=11, color="#64748B", dy=14).encode(text="label:N")
-    st.altair_chart((arcs + total + label).properties(height=190).configure_view(stroke=None))
+    total = centre.mark_text(fontSize=40, fontWeight=700, color="#14213D", dy=-10).encode(text="total:N")
+    label = centre.mark_text(fontSize=13, color="#64748B", dy=20).encode(text="label:N")
+    st.altair_chart((arcs + total + label).properties(height=250).configure_view(stroke=None))
 
 
 def dashboard_page() -> None:
@@ -726,13 +737,10 @@ def dashboard_page() -> None:
             ]
             groups = [group for group in groups if group[1] or group[0] != NOT_ASSIGNED]
             st.caption("By severity — engine.py does not classify yet, and GuardBee never infers a class.")
-        chart, legend = st.columns([1, 1], vertical_alignment="center")
-        with chart:
-            overview_donut(groups)
-        with legend:
-            for name, count, hex_ in groups:
-                dot = LEGEND_DOTS.get(hex_, "gray")
-                st.markdown(f":{dot}[●] {name} · **{count}** ({percent(count)})")
+        overview_donut(groups)
+        with keyed(st, "overview-legend"):
+            for column, (name, count, hex_) in zip(st.columns(len(groups), gap="small"), groups):
+                column.markdown(f":{LEGEND_DOTS.get(hex_, 'gray')}[●] {name}  \n**{count}** · {percent(count)}")
 
     with card(right, "dash-recent"):
         st.subheader("Recent Incidents")
