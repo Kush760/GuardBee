@@ -2,7 +2,7 @@
 
 ## Implemented provider contract
 
-`ai_client.py` uses the OpenAI Python SDK with the fixed `BASE_URL` value `https://api.tokenfactory.us-central1.nebius.com/v1/`. It initializes `OpenAI(base_url=BASE_URL, api_key=..., timeout=60.0)` and calls chat completions with temperature `0.2` and maximum 750 tokens.
+`ai_client.py` uses the OpenAI Python SDK with `BASE_URL` `https://api.tokenfactory.nebius.com/v1/` (the global endpoint from the Nebius quickstart), overridable with `NEBIUS_BASE_URL` in Streamlit secrets or the environment. It initializes `OpenAI(base_url=..., api_key=..., timeout=60.0, max_retries=1)` and calls chat completions with temperature `0.2` and maximum 2000 tokens (the reasoning model needs room before it writes). Failures raise `AIReportError` with a cause-specific message (401, 403, 404, 429, timeout, network, exhausted token budget) that never includes provider response text.
 
 ## Configuration
 

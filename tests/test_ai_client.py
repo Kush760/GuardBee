@@ -225,6 +225,15 @@ class TestProviderBoundary(unittest.TestCase):
                 )
                 self.assertIn(phrase, str(error))
 
+    def test_endpoint_defaults_to_global_and_can_be_overridden(self):
+        self.assertEqual(ai_client.BASE_URL, "https://api.tokenfactory.nebius.com/v1/")
+        regional = "https://api.tokenfactory.us-central1.nebius.com/v1/"
+        with patch.dict(os.environ, {"NEBIUS_BASE_URL": regional}):
+            self.generate(lambda request: httpx.Response(200, json=chat_completion("EVT-1 POL-1")))
+        self.assertEqual(str(self.requests[0].url), regional + "chat/completions")
+        error = self.assert_safe_failure(lambda request: httpx.Response(401, json={"error": {"message": "x"}}))
+        self.assertIn(ai_client.BASE_URL, str(error))  # a 401 names the endpoint it came from
+
     def test_timeout_and_connection_errors_name_the_cause(self):
         def timeout(request):
             raise httpx.ReadTimeout("timed out", request=request)

@@ -21,6 +21,7 @@ import streamlit as st
 
 from ai_client import (
     AIReportError,
+    configured_base_url,
     configured_model,
     extract_citation_ids,
     generate_report,
@@ -390,6 +391,14 @@ def read_api_key() -> str:
         return os.getenv("NEBIUS_API_KEY", "")
 
 
+def read_base_url() -> str:
+    """Optional NEBIUS_BASE_URL override for a regional Token Factory endpoint."""
+    try:
+        return str(st.secrets.get("NEBIUS_BASE_URL", configured_base_url()))
+    except FileNotFoundError:
+        return configured_base_url()
+
+
 def read_model() -> str:
     """Allow an account-approved model ID in secrets or the local environment."""
     try:
@@ -467,7 +476,9 @@ def run_ai_analysis(
     clear_report_state()
     try:
         with st.spinner("Generating AI report via Nebius Token Factory. GuardBee never fabricates reports..."):
-            report = generate_report(read_api_key(), incident, analysis, matched_policies, model=read_model())
+            report = generate_report(
+                read_api_key(), incident, analysis, matched_policies, model=read_model(), base_url=read_base_url()
+            )
         usable, reason = validate_report_citations(
             report,
             [event["id"] for event in incident["events"]],

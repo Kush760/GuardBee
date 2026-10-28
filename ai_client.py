@@ -10,7 +10,8 @@ from typing import Any
 import openai
 from openai import OpenAI
 
-BASE_URL = "https://api.tokenfactory.us-central1.nebius.com/v1/"
+# Global endpoint from the Nebius Token Factory quickstart; NEBIUS_BASE_URL selects a regional one.
+BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
 DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 
 # Hyphen look-alikes a model may emit; an ID written with one is malformed, not a citation.
@@ -31,10 +32,13 @@ MAX_TOKENS = 2000
 _THINK_BLOCK = re.compile(r"<think>.*?(?:</think>|$)", re.IGNORECASE | re.DOTALL)
 
 
-def _failure_reason(exc: Exception, model: str) -> str:
+def _failure_reason(exc: Exception, model: str, base_url: str) -> str:
     """Name the failure without echoing provider text, which may repeat the credential."""
     if isinstance(exc, openai.AuthenticationError):
-        return "Nebius rejected the API key (HTTP 401). Check NEBIUS_API_KEY in Streamlit secrets."
+        return (
+            f"Nebius rejected the API key (HTTP 401) at {base_url}. Check NEBIUS_API_KEY, and that it is a "
+            "Token Factory API key created for this endpoint (set NEBIUS_BASE_URL for a regional one)."
+        )
     if isinstance(exc, openai.PermissionDeniedError):
         return "The API key is not allowed to use this model (HTTP 403). Check the key's project and access."
     if isinstance(exc, openai.NotFoundError):
@@ -50,6 +54,11 @@ def _failure_reason(exc: Exception, model: str) -> str:
     return "Nebius Token Factory did not return a report."
 
 
+def configured_base_url() -> str:
+    """Return a local endpoint override; a key only works on the endpoint it was created for."""
+    return os.getenv("NEBIUS_BASE_URL", BASE_URL)
+
+
 def configured_model() -> str:
     """Return a local override; exact availability is account-specific."""
     return os.getenv("NEBIUS_MODEL", DEFAULT_MODEL)
@@ -61,6 +70,7 @@ def generate_report(
     analysis: dict[str, Any],
     policies: list[dict[str, Any]],
     model: str | None = None,
+    base_url: str | None = None,
 ) -> str:
     """Call Nebius directly and never fabricate an AI response."""
     if not api_key:
@@ -72,8 +82,9 @@ def generate_report(
         "retrieved_company_policies": policies,
     }
     model = model or configured_model()
+    base_url = base_url or configured_base_url()
     try:
-        client = OpenAI(base_url=BASE_URL, api_key=api_key, timeout=60.0, max_retries=1)
+        client = OpenAI(base_url=base_url, api_key=api_key, timeout=60.0, max_retries=1)
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -102,7 +113,7 @@ def generate_report(
         report = getattr(message, "content", None)
         finish_reason = getattr(choices[0], "finish_reason", None) if choices else None
     except Exception as exc:
-        raise AIReportError(_failure_reason(exc, model)) from exc
+        raise AIReportError(_failure_reason(exc, model, base_url)) from exc
 
     if isinstance(report, str):
         report = _THINK_BLOCK.sub("", report).strip()

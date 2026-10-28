@@ -63,7 +63,7 @@ Then start the app:
 streamlit run app.py
 ```
 
-`NEBIUS_API_KEY` and `NEBIUS_MODEL` may also be environment variables. The default model is a configurable starting value, not a guarantee of availability; confirm model ID, credits, and access in your Nebius Token Factory catalog before demoing. Never commit `.streamlit/secrets.toml` or `.env`.
+`NEBIUS_API_KEY`, `NEBIUS_MODEL`, and the optional `NEBIUS_BASE_URL` may also be environment variables. GuardBee calls the global endpoint `https://api.tokenfactory.nebius.com/v1/` by default; set `NEBIUS_BASE_URL` only if your key was created for a regional endpoint, because a key used on the wrong endpoint returns HTTP 401. The default model is a configurable starting value, not a guarantee of availability; confirm model ID, credits, and access in your Nebius Token Factory catalog before demoing. Never commit `.streamlit/secrets.toml` or `.env`.
 
 ## Test and syntax checks
 
