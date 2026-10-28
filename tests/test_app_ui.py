@@ -249,6 +249,47 @@ class TestGuardBeeUI(unittest.TestCase):
         self.assertIsNone(app.session_state["report"])
         self.assertTrue(app.button(key="btn_approve").disabled)
 
+    def test_approve_outcome_describes_the_engine_action(self):
+        self.use_report("EVT-202 per POL-001.")
+        app = open_incident("INC-1003")  # NORMAL: the engine proposes no containment
+        app.button(key="ai_request_btn").click().run()
+        app.button(key="btn_approve").click().run()
+        outcome = app.session_state["audit"][-1]["outcome"]
+        self.assertIn("No containment recommendation", outcome)
+        self.assertNotIn("session-revocation", outcome)
+
+    def test_recorded_decision_is_shown_after_switching_incidents(self):
+        app = self.approve_validated_report()
+        app.radio(key="incident_picker").set_value("INC-1002").run()
+        self.assertNotIn("Last recorded decision", page_text(app))
+        app.radio(key="incident_picker").set_value("INC-1001").run()
+        self.assertIn("Last recorded decision\\: APPROVED", page_text(app))
+        app.button(key="open_audit").click().run()
+        self.assertEqual(app.title[0].value, "Audit History")
+
+    def test_ai_report_links_and_images_are_not_rendered(self):
+        self.use_report(
+            "## Facts\nEVT-006 per POL-001. [click](https://evil.example/x) ![p](https://evil.example/p.png) "
+            "owner@evil.example https://evil.example www.evil.example <b>x</b>"
+        )
+        app = open_incident("INC-1001")
+        app.button(key="ai_request_btn").click().run()
+        shown = next(element.value for element in app.markdown if "EVT-006 per POL-001" in element.value)
+        self.assertIn("## Facts", shown)  # headings and lists still render
+        self.assertNotIn("](", shown)  # Markdown links and images are reduced to their text
+        outside_code = re.sub(r"`[^`]*`", "", shown)
+        for address in ("evil.example", "://", "@"):
+            self.assertNotIn(address, outside_code)  # addresses only appear as literal code
+        self.assertIn("`owner@evil.example`", shown)
+        self.assertIn("`https://evil.example`", shown)
+        self.assertIn("\\<b>", shown)
+
+    def test_filter_options_show_match_counts(self):
+        options = open_incident("INC-1001").selectbox(key="incident_filter").options
+        self.assertIn("All (13)", options)
+        self.assertIn("Low severity (0)", options)
+        self.assertIn("Suspicious (6)", options)
+
     def test_invalid_citations_keep_decision_locked(self):
         self.use_report("EVT-999 per POL-001.")
         app = open_incident("INC-1001")

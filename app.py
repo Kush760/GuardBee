@@ -361,6 +361,19 @@ def md(value: Any) -> str:
     return _MARKDOWN_SPECIAL.sub(r"\\\1", str(value))
 
 
+_REPORT_IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+_REPORT_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_REPORT_ADDRESS = re.compile(r"(?i)\b(?:https?://|www\.)[^\s`<>]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def report_markdown(report: str) -> str:
+    """Keep the model's headings and lists but never render its links, images, or auto-links."""
+    text = _REPORT_IMAGE.sub(r"\1", report)
+    text = _REPORT_LINK.sub(r"\1", text)
+    text = _REPORT_ADDRESS.sub(lambda match: code(match.group(0)), text)  # code spans never become links
+    return text.replace("<", "\\<")
+
+
 def code(value: Any) -> str:
     """Show an identifier (account, IP, ID) literally as inline code; never a link."""
     return "`" + str(value).replace("`", "'") + "`"
@@ -749,17 +762,19 @@ def short_time(value: str) -> str:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%b %d, %H:%M")
 
 
+def matches_filter(incident: dict[str, Any], option: str) -> bool:
+    wanted = INCIDENT_FILTERS.get(option)
+    analysis = analyses[incident["id"]]
+    return wanted is None or analysis.get("severity") == wanted or classification_of(analysis) == wanted
+
+
 def filtered_incidents() -> list[dict[str, Any]]:
-    wanted = INCIDENT_FILTERS.get(st.session_state.get("incident_filter", "All"))
+    option = st.session_state.get("incident_filter", "All")
     query = st.session_state.get("incident_search", "").strip().lower()
     return [
         incident
         for incident in incidents
-        if (
-            wanted is None
-            or analyses[incident["id"]].get("severity") == wanted
-            or classification_of(analyses[incident["id"]]) == wanted
-        )
+        if matches_filter(incident, option)
         and (not query or any(query in str(incident[field]).lower() for field in ("id", "title", "account", "department")))
     ]
 
@@ -955,7 +970,7 @@ def render_ai_panel(
             + "; ".join(f"`{policy_id}` {md(titles.get(policy_id, ''))}" for policy_id in cited_policies)
         )
         with st.container(border=True):
-            st.markdown(st.session_state.report)
+            st.markdown(report_markdown(st.session_state.report))
         st.caption(
             "Citation checks prove the IDs belong to this incident and its retrieved policies, not that every "
             "sentence is correct. Treat inferred risk and unknowns as unconfirmed."
@@ -997,19 +1012,30 @@ def render_decision_panel(incident: dict[str, Any], analysis: dict[str, Any], co
         st.markdown("**Take Action (Simulated)**")
         st.caption(f"SIMULATED ACTION — NO REAL ACCOUNT ACTION · Proposed: {md(analysis['suggested_action'])}")
         decision = st.session_state.decision
+        earlier = next(
+            (record for record in reversed(st.session_state.audit) if record["incident_id"] == incident["id"]), None
+        )
         if decision:
             st.success(
                 md(f"{decision['decision']} recorded at {decision['time_utc']} (UTC): {decision['outcome']}"),
                 icon="📝",
             )
-        elif not st.session_state.report:
-            st.caption("🔒 Locked until a citation-validated AI report is available for this incident.")
-        elif not can_decide:
-            st.caption("🔒 Locked: the AI report belongs to a different incident or context. Request a new report.")
+        else:
+            if earlier:  # the active decision is cleared on leaving an incident; the audit keeps it
+                st.info(
+                    md(f"Last recorded decision: {earlier['decision']} at {earlier['time_utc']} (UTC). "
+                       "A new decision needs a new citation-validated AI report."),
+                    icon="📝",
+                )
+            if not st.session_state.report:
+                st.caption("🔒 Locked until a citation-validated AI report is available for this incident.")
+            elif not can_decide:
+                st.caption("🔒 Locked: the AI report belongs to a different incident or context. Request a new report.")
         approve, reject = st.columns(2)
         for column, label, key, verdict, outcome in (
             (approve, "✓ Approve", "btn_approve", "APPROVED",
-             "Simulated session-revocation response recorded; no external system was changed."),
+             f"Simulated response recorded for the proposed action: {analysis['suggested_action'].rstrip('.')}. "
+             "No external system was changed."),
             (reject, "✕ Reject", "btn_reject", "REJECTED",
              "No action taken; recommendation rejected by demo analyst."),
         ):
@@ -1017,7 +1043,7 @@ def render_decision_panel(incident: dict[str, Any], analysis: dict[str, Any], co
                 if audit_decision(incident, verdict, outcome, context_id):
                     st.rerun()
                 st.error("The decision was not recorded: the report is no longer valid for this context.")
-        if decision and st.button("View in Audit History →", key="open_audit"):
+        if (decision or earlier) and st.button("View in Audit History →", key="open_audit"):
             st.switch_page(AUDIT_PAGE)
     return can_decide
 
@@ -1113,7 +1139,10 @@ def incidents_page() -> None:
         "Search", placeholder="Search by incident ID, title, account…", key="incident_search",
         label_visibility="collapsed",
     )
-    choose.selectbox("Filter", list(INCIDENT_FILTERS), key="incident_filter", label_visibility="collapsed")
+    choose.selectbox(
+        "Filter", list(INCIDENT_FILTERS), key="incident_filter", label_visibility="collapsed",
+        format_func=lambda option: f"{option} ({sum(matches_filter(incident, option) for incident in incidents)})",
+    )
 
     with keyed(st, "layout-incidents"):
         left, main = st.columns([1.25, 3], gap="medium")
