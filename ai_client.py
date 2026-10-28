@@ -7,6 +7,7 @@ import os
 import re
 from typing import Any
 
+import openai
 from openai import OpenAI
 
 BASE_URL = "https://api.tokenfactory.us-central1.nebius.com/v1/"
@@ -23,6 +24,30 @@ _WELL_FORMED_ID = re.compile(r"(?:EVT|POL)-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*", re.I
 
 class AIReportError(RuntimeError):
     """Raised when GuardBee cannot obtain a safe, usable live AI report."""
+
+
+# Reasoning models spend part of the budget thinking before they write the report.
+MAX_TOKENS = 2000
+_THINK_BLOCK = re.compile(r"<think>.*?(?:</think>|$)", re.IGNORECASE | re.DOTALL)
+
+
+def _failure_reason(exc: Exception, model: str) -> str:
+    """Name the failure without echoing provider text, which may repeat the credential."""
+    if isinstance(exc, openai.AuthenticationError):
+        return "Nebius rejected the API key (HTTP 401). Check NEBIUS_API_KEY in Streamlit secrets."
+    if isinstance(exc, openai.PermissionDeniedError):
+        return "The API key is not allowed to use this model (HTTP 403). Check the key's project and access."
+    if isinstance(exc, openai.NotFoundError):
+        return f"Model {model} was not found for this account (HTTP 404). Check NEBIUS_MODEL."
+    if isinstance(exc, openai.RateLimitError):
+        return "Rate limit or quota reached (HTTP 429). Check account credits, wait, then retry."
+    if isinstance(exc, openai.APITimeoutError):
+        return "Nebius did not answer within 60 seconds. Retry, or try a smaller model."
+    if isinstance(exc, openai.APIConnectionError):
+        return "Could not reach Nebius Token Factory. Check the network connection."
+    if isinstance(exc, openai.APIStatusError):
+        return f"Nebius returned HTTP {exc.status_code}."
+    return "Nebius Token Factory did not return a report."
 
 
 def configured_model() -> str:
@@ -46,10 +71,11 @@ def generate_report(
         "deterministic_rule_analysis": analysis,
         "retrieved_company_policies": policies,
     }
+    model = model or configured_model()
     try:
-        client = OpenAI(base_url=BASE_URL, api_key=api_key, timeout=60.0)
+        client = OpenAI(base_url=BASE_URL, api_key=api_key, timeout=60.0, max_retries=1)
         response = client.chat.completions.create(
-            model=model or configured_model(),
+            model=model,
             messages=[
                 {
                     "role": "system",
@@ -69,17 +95,25 @@ def generate_report(
                 {"role": "user", "content": json.dumps(prompt, indent=2)},
             ],
             temperature=0.2,
-            max_tokens=750,
+            max_tokens=MAX_TOKENS,
         )
         choices = getattr(response, "choices", None)
         message = choices[0].message if choices else None
         report = getattr(message, "content", None)
+        finish_reason = getattr(choices[0], "finish_reason", None) if choices else None
     except Exception as exc:
-        raise AIReportError("Nebius Token Factory did not return a report.") from exc
+        raise AIReportError(_failure_reason(exc, model)) from exc
 
-    if not isinstance(report, str) or not report.strip():
+    if isinstance(report, str):
+        report = _THINK_BLOCK.sub("", report).strip()
+    if not isinstance(report, str) or not report:
+        if finish_reason == "length":
+            raise AIReportError(
+                f"The model used its whole {MAX_TOKENS}-token budget before writing the report. Retry, or "
+                "configure a non-reasoning model in NEBIUS_MODEL."
+            )
         raise AIReportError("Nebius returned an empty or malformed report.")
-    return report.strip()
+    return report
 
 
 def _scan_ids(report: str) -> list[tuple[str, bool]]:

@@ -2,13 +2,13 @@
 
 ## Recorded automated result
 
-The current codebase contains 90 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
+The current codebase contains 94 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Recorded result (`dev` branch, Security Analytics Console UI with the v2.2 engine and 13-incident dataset): **90 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
+Recorded result (`dev` branch, Security Analytics Console UI with the v2.2 engine and 13-incident dataset): **94 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
 
 All tests are offline. Provider tests use mocks or an in-process `httpx.MockTransport` and never contact Nebius. UI tests replace `ai_client.generate_report` with a mock that fails the test if any path tries to reach the provider, even when a local `.streamlit/secrets.toml` exists.
 
@@ -65,7 +65,7 @@ Classification, severity, and priority display is tested against real `engine.py
 - `test_provider_failure_is_a_safe_error`
 - `test_empty_or_malformed_provider_response_is_a_safe_error`
 
-### `TestProviderBoundary` (10)
+### `TestProviderBoundary` (14)
 
 - `test_valid_response_returns_stripped_report`
 - `test_request_uses_documented_endpoint_timeout_and_payload`
@@ -73,6 +73,10 @@ Classification, severity, and priority display is tested against real `engine.py
 - `test_timeout_is_a_safe_error`
 - `test_connection_failure_is_a_safe_error`
 - `test_http_errors_are_safe_and_do_not_leak_key`
+- `test_http_errors_name_the_cause`
+- `test_timeout_and_connection_errors_name_the_cause`
+- `test_exhausted_token_budget_is_explained`
+- `test_reasoning_block_is_removed_from_report`
 - `test_invalid_json_is_a_safe_error`
 - `test_non_json_content_type_is_a_safe_error`
 - `test_unexpected_response_structures_are_safe_errors`

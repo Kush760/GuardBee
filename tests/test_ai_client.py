@@ -13,14 +13,14 @@ from ai_client import AIReportError, extract_citation_ids, generate_report, vali
 FAKE_KEY = "test-only-key-not-a-secret-7f3a"
 
 
-def chat_completion(content):
+def chat_completion(content, finish_reason="stop"):
     return {
         "id": "chatcmpl-test",
         "object": "chat.completion",
         "created": 0,
         "model": "test-model",
         "choices": [
-            {"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": content}}
+            {"index": 0, "finish_reason": finish_reason, "message": {"role": "assistant", "content": content}}
         ],
     }
 
@@ -144,8 +144,7 @@ class TestProviderBoundary(unittest.TestCase):
 
         # max_retries=0 is a test-only override so SDK retry backoff does not slow the suite.
         return OpenAI(
-            **kwargs,
-            max_retries=0,
+            **dict(kwargs, max_retries=0),
             http_client=httpx.Client(transport=httpx.MockTransport(record)),
         )
 
@@ -170,13 +169,14 @@ class TestProviderBoundary(unittest.TestCase):
         self.generate(lambda request: httpx.Response(200, json=chat_completion("EVT-1 POL-1")), model="chosen/model")
         self.assertEqual(self.client_kwargs["base_url"], ai_client.BASE_URL)
         self.assertEqual(self.client_kwargs["timeout"], 60.0)
+        self.assertEqual(self.client_kwargs["max_retries"], 1)  # a failure surfaces in about two minutes, not three
         self.assertEqual(len(self.requests), 1)
         request = self.requests[0]
         self.assertEqual(str(request.url), ai_client.BASE_URL + "chat/completions")
         body = json.loads(request.content)
         self.assertEqual(body["model"], "chosen/model")
         self.assertEqual(body["temperature"], 0.2)
-        self.assertEqual(body["max_tokens"], 750)
+        self.assertEqual(body["max_tokens"], 2000)
         self.assertEqual([message["role"] for message in body["messages"]], ["system", "user"])
         system = body["messages"][0]["content"]
         for section in ("Observed facts", "Inferred risk", "Unknowns and limitations"):
@@ -214,6 +214,39 @@ class TestProviderBoundary(unittest.TestCase):
                         status, json={"error": {"message": f"rejected key {FAKE_KEY}"}}
                     )
                 )
+
+    def test_http_errors_name_the_cause(self):
+        expected = {401: "rejected the API key", 403: "not allowed to use this model",
+                    404: "Model test-model was not found", 429: "quota", 500: "HTTP 500"}
+        for status, phrase in expected.items():
+            with self.subTest(status=status):
+                error = self.assert_safe_failure(
+                    lambda request, status=status: httpx.Response(status, json={"error": {"message": "x"}})
+                )
+                self.assertIn(phrase, str(error))
+
+    def test_timeout_and_connection_errors_name_the_cause(self):
+        def timeout(request):
+            raise httpx.ReadTimeout("timed out", request=request)
+
+        def refused(request):
+            raise httpx.ConnectError("refused", request=request)
+
+        self.assertIn("60 seconds", str(self.assert_safe_failure(timeout)))
+        self.assertIn("Could not reach", str(self.assert_safe_failure(refused)))
+
+    def test_exhausted_token_budget_is_explained(self):
+        error = self.assert_safe_failure(
+            lambda request: httpx.Response(200, json=chat_completion(None, finish_reason="length"))
+        )
+        self.assertIn("token budget", str(error))
+
+    def test_reasoning_block_is_removed_from_report(self):
+        content = "<think>private reasoning EVT-9</think>\n## Observed facts\nEVT-1 per POL-1."
+        report = self.generate(lambda request: httpx.Response(200, json=chat_completion(content)))
+        self.assertEqual(report, "## Observed facts\nEVT-1 per POL-1.")
+        only_thinking = chat_completion("<think>still thinking", finish_reason="length")
+        self.assertIn("token budget", str(self.assert_safe_failure(lambda request: httpx.Response(200, json=only_thinking))))
 
     def test_invalid_json_is_a_safe_error(self):
         self.assert_safe_failure(
