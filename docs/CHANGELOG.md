@@ -71,6 +71,7 @@
 - Status cards use stronger tints (the gradient no longer fades to white), deeper borders, white icon chips, and darker captions for contrast.
 - Incident header: the classification badge no longer touches the heading's icon tile (heading line height matches the tile, with a small gap below).
 - Event table: "Rule evidence" shows "✓ Evidence" or "—" instead of a read-only checkbox that looked clickable, and the table now spans the full width below the timeline so all seven columns fit. Audit History's "Simulation only" column shows "Yes"/"No" for the same reason.
+- Status card labels are larger (16px instead of 13px) and centred on their icon; every label has the same two-line slot so the numbers line up across cards.
 
 ## Documentation and delivery assets
 

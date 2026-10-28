@@ -99,8 +99,11 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [data-testid="stMain"] [class*="st-key-tone-"] { min-height: 132px; }
 [class*="st-key-tone-"][class*="-kpi-"] { position: relative; padding-left: 3.9rem !important; min-height: 176px; }
 [class*="st-key-tone-"][class*="-kpi-"] [data-testid="stMetricLabel"] p { text-transform: none; letter-spacing: 0;
-  font-size: 0.8rem; font-weight: 700; }
-[class*="st-key-kpi-icon-"] { position: absolute !important; left: 1rem; top: 1.1rem; width: 38px !important;
+  font-size: 1rem; font-weight: 700; line-height: 1.25; }
+/* Every label gets the same two-line slot, centred on the 38px icon chip, so the numbers below line up. */
+[class*="st-key-tone-"][class*="-kpi-"]:not([class*="-kpi-c-"]) [data-testid="stMetricLabel"] {
+  min-height: 2.5rem; display: flex; align-items: center; }
+[class*="st-key-kpi-icon-"] { position: absolute !important; left: 1rem; top: 1.975rem; width: 38px !important;
   height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
 [class*="st-key-kpi-icon-"] { gap: 0 !important; padding: 0 !important; }
 [class*="st-key-kpi-icon-"] > div { width: auto !important; }
