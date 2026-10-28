@@ -65,6 +65,7 @@
 - AI report failures now name their cause (rejected key, model not available, quota, timeout, network, or an exhausted token budget) without echoing provider text. The client retries once instead of twice, the reply budget rose from 750 to 2000 tokens for the reasoning model, and any `<think>` block is stripped from the report. The suite is now 94 tests.
 - The AI report outcome (ready, or the failure reason) now appears in the incident header beside "Request AI Report", not only inside the AI Analysis tab.
 - The Nebius endpoint now defaults to the global `https://api.tokenfactory.nebius.com/v1/` from the Nebius quickstart instead of the hard-coded us-central1 regional endpoint, and `NEBIUS_BASE_URL` selects a regional one. A key used on the wrong endpoint returned HTTP 401; the 401 message now names the endpoint. The suite is now 95 tests.
+- Spacing fixes: page width cap raised from 1360px to 1640px so wide screens have no large empty gutters; side-by-side cards (Incident Overview and Recent Incidents, Relevant Policies and Take Action) share one height; incident-list captions line up with titles and the list fills its card; Recent Incidents text lines up with the View buttons and "View All" is right-aligned; Basic Information wraps evenly (three fields per line, two on narrow screens).
 
 ## Documentation and delivery assets
 

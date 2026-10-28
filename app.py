@@ -85,7 +85,7 @@ STYLES = """
 }
 html, body, .stApp { font-family: Inter, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
 .stApp { background: var(--gb-bg); }
-[data-testid="stMainBlockContainer"] { padding-top: 2rem; padding-bottom: 3rem; max-width: 1360px; }
+[data-testid="stMainBlockContainer"] { padding-top: 2rem; padding-bottom: 3rem; max-width: 1640px; }
 /* Collapsed sidebar: the top bar shows the logo icon, so give it a surface and push content below it. */
 .stApp:has([data-testid="stSidebar"][data-collapsed="true"]) [data-testid="stHeader"] {
   background: rgba(244, 247, 252, 0.94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--gb-border); }
@@ -123,8 +123,17 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [class*="st-key-dash-row-"] { border-bottom: 1px solid #EEF2F7; padding: 0.1rem 0 0.35rem; }
 [class*="st-key-dash-row-"] p { font-size: 0.86rem; margin-bottom: 0; }
 [class*="st-key-dash_view_"] button { min-height: 1.9rem; padding: 0.1rem 0.5rem; font-size: 0.8rem; }
-.st-key-dash_view_all button { background: transparent; border: none; color: var(--gb-accent);
-  box-shadow: none; justify-content: flex-end; }
+.st-key-dash_view_all [data-testid="stButton"] { display: flex; justify-content: flex-end; }
+[data-testid="stMain"] .st-key-dash_view_all button { background: transparent; border: none; color: var(--gb-accent);
+  box-shadow: none; width: auto !important; padding-right: 0.25rem; }
+[class*="st-key-dash-row-"] [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
+/* Side-by-side cards share one height: each card fills its stretched column. */
+.st-key-layout-split > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > [data-testid="stVerticalBlock"],
+.st-key-layout-pair > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > [data-testid="stVerticalBlock"] {
+  height: 100%; }
+.st-key-layout-split > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"],
+.st-key-layout-pair > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"] {
+  flex: 1 1 auto; }
 .st-key-dash-source { background: #EEF4FF !important; border-color: #C7D7FE !important; }
 .st-key-dash-source { padding: 0.7rem 1rem !important; }
 .st-key-dash-source [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
@@ -141,12 +150,19 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 .st-key-incident_picker [data-testid="stRadioOption"] > div > div:first-child { display: none; }
 .st-key-incident_picker [data-testid="stRadioOption"] p { font-size: 0.88rem; }
 .st-key-incident_picker [data-testid="stCaptionContainer"] p { font-size: 0.78rem; }
+/* The radio dot is hidden, so captions start flush with the title instead of under the missing dot. */
+.st-key-incident_picker [data-testid="stRadioCaption"] { padding-left: 0 !important; }
+.st-key-incident_picker, .st-key-incident_picker [data-testid="stRadio"],
+.st-key-incident_picker [data-testid="stRadioGroup"] { width: 100% !important; }
 [class*="st-key-inc-"] h3 { font-size: 1.25rem !important; padding: 0 !important; }
 [class*="st-key-tl-"] p { font-size: 0.88rem; margin-bottom: 0; }
 [class*="st-key-tl-"] [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
 .st-key-inc-engine li { margin-bottom: 0.15rem; font-size: 0.9rem; }
 .st-key-inc-engine li p { margin: 0; }
 .st-key-inc-basic [data-testid="stCaptionContainer"] p { margin-bottom: 0; font-size: 0.75rem; }
+.st-key-inc-basic > * > [data-testid="stHorizontalBlock"] { row-gap: 0.6rem; }
+.st-key-inc-basic > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+  flex: 1 1 calc(33.333% - 1rem) !important; min-width: calc(33.333% - 1rem) !important; }
 .st-key-inc-engine { background: #F8FAFF !important; }
 .st-key-inc-policies, .st-key-inc-decision { min-height: 190px; }
 
@@ -740,8 +756,7 @@ def dashboard_page() -> None:
                 row[4].markdown(f":violet-background[{md(priority)}]" if priority else "—")
                 if row[5].button("View", key=f"dash_view_{incident['id']}"):
                     go_to_incident(incident["id"])
-        _, more = st.columns([3, 1])
-        if more.button("View All →", key="dash_view_all"):
+        if st.button("View All →", key="dash_view_all"):
             st.switch_page(INCIDENTS_PAGE)
 
     # Row 3: data source strip
@@ -831,10 +846,10 @@ def render_basic_info(incident: dict[str, Any]) -> None:
     )
     with card(st, "inc-basic"):
         st.markdown("**Basic Information**")
-        for row in (fields[:3], fields[3:]):
-            for column, (label, value) in zip(st.columns(3, gap="small"), row):
-                column.caption(label)
-                column.markdown(value)
+        # One wrapping row: three fields per line, two on narrow screens (see the inc-basic styles).
+        for column, (label, value) in zip(st.columns(len(fields), gap="small"), fields):
+            column.caption(label)
+            column.markdown(value)
 
 
 def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
