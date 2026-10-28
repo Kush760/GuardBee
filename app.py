@@ -194,6 +194,9 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 .st-key-inc-header h3 .stMarkdownColoredText:first-child { width: 2.5rem; height: 2.5rem; border-radius: 12px;
   margin-right: 0.6rem; }
 .st-key-inc-header h3 span[role="img"] { font-size: 1.5rem; }
+/* Keep the classification badge clear of the heading's icon tile. */
+.st-key-inc-header [data-testid="stMarkdownContainer"]:has(h3) { margin-bottom: 0.2rem !important; }
+.st-key-inc-header h3 { line-height: 2.5rem !important; }
 .st-key-incident_picker [role="radiogroup"] > div { transition: transform .15s ease, box-shadow .15s ease,
   border-color .15s ease, background .15s ease; }
 .st-key-incident_picker [role="radiogroup"] > div:hover { transform: translateX(3px);
