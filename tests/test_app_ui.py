@@ -304,6 +304,7 @@ class TestGuardBeeUI(unittest.TestCase):
         app.button(key="ai_request_btn").click().run()
         self.assertIsNone(app.session_state["report"])
         self.assertIn("did not return a report", page_text(app))
+        self.assertTrue(any("AI report failed" in element.value for element in app.error))  # shown beside the button
         self.assertTrue(app.button(key="btn_approve").disabled)
 
         self.use_report(VALID_REPORT)

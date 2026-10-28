@@ -1066,6 +1066,11 @@ def render_investigation(incident: dict[str, Any]) -> None:
             "Request AI Report", key="ai_request_btn", icon=":material/auto_awesome:", disabled=not matched_policies
         ):
             run_ai_analysis(incident, analysis, matched_policies, context_id)
+        # Report the outcome beside the button; the full report and Retry live in the AI Analysis tab.
+        if st.session_state.report:
+            st.success("AI report ready and citation-validated. Open the **AI Analysis** tab to read it.", icon="✅")
+        elif st.session_state.report_status:
+            st.error(f"AI report failed: {md(st.session_state.report_status)}", icon="🚫")
         classification = classification_of(analysis)
         st.caption(
             CLASSIFICATIONS[classification][1]

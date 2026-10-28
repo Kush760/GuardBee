@@ -63,6 +63,7 @@
 - Made the "View Full Report" dialog smaller: medium width (750px instead of large) with compact report text. Only the report body scrolls (max 440px, less on short screens); the title, incident summary, and risk note stay fixed. Its scrollbar is hidden; the body still scrolls by wheel, touch, and keyboard.
 - QA pass fixes: (1) Approve now records the engine's own suggested action as the outcome; it previously said "session-revocation" for every incident, including NORMAL and INSUFFICIENT_EVIDENCE ones. (2) The decision panel shows the last recorded decision for an incident after you switch away and back, with a link to Audit History. (3) AI report text no longer renders as live Markdown links or images: links and images are reduced to their text, and URLs and email addresses are shown as literal code. (4) Incident filter options show how many incidents each one matches (for example "Low severity (0)"). The suite is now 90 tests.
 - AI report failures now name their cause (rejected key, model not available, quota, timeout, network, or an exhausted token budget) without echoing provider text. The client retries once instead of twice, the reply budget rose from 750 to 2000 tokens for the reasoning model, and any `<think>` block is stripped from the report. The suite is now 94 tests.
+- The AI report outcome (ready, or the failure reason) now appears in the incident header beside "Request AI Report", not only inside the AI Analysis tab.
 
 ## Documentation and delivery assets
 
