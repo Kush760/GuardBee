@@ -66,6 +66,7 @@
 - The AI report outcome (ready, or the failure reason) now appears in the incident header beside "Request AI Report", not only inside the AI Analysis tab.
 - The Nebius endpoint now defaults to the global `https://api.tokenfactory.nebius.com/v1/` from the Nebius quickstart instead of the hard-coded us-central1 regional endpoint, and `NEBIUS_BASE_URL` selects a regional one. A key used on the wrong endpoint returned HTTP 401; the 401 message now names the endpoint. The suite is now 95 tests.
 - Spacing fixes: page width cap raised from 1360px to 1640px so wide screens have no large empty gutters; side-by-side cards (Incident Overview and Recent Incidents, Relevant Policies and Take Action) share one height; incident-list captions line up with titles and the list fills its card; Recent Incidents text lines up with the View buttons and "View All" is right-aligned; Basic Information wraps evenly (three fields per line, two on narrow screens).
+- The dashboard opens with a "Welcome to GuardBee" heading (subtitle "Security Analytics Console"), matching the title style of the other pages.
 
 ## Documentation and delivery assets
 

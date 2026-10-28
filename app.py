@@ -680,6 +680,7 @@ def overview_donut(groups: list[tuple[str, int, str]]) -> None:
 
 
 def dashboard_page() -> None:
+    page_header("Welcome to GuardBee", "Security Analytics Console", "Synthetic suspicious-login incidents at a glance.")
 
     # Row 1: KPI cards
     with keyed(st, "layout-kpis"):

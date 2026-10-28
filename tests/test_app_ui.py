@@ -78,6 +78,7 @@ class TestGuardBeeUI(unittest.TestCase):
     def test_dashboard_and_every_incident_render(self):
         dashboard = start_app()
         self.assertFalse(dashboard.exception)
+        self.assertEqual(dashboard.title[0].value, "Welcome to GuardBee")
         self.assertIn("Demo only", page_text(dashboard))  # sidebar disclaimer, shown on every page
         for incident_id in ("INC-1001", "INC-1002", "INC-1003"):
             with self.subTest(incident=incident_id):
