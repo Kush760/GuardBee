@@ -890,22 +890,6 @@ def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
                     f"**{'Failed login' if failed else 'Successful login'}** from {code(event['ip'])} "
                     f"({place}, {md(event.get('country') or 'Unknown')}){tag}"
                 )
-        with st.expander("Event table"):
-            st.dataframe(
-                [
-                    {
-                        "Event": event["id"],
-                        "Time (UTC)": event["time_utc"],
-                        "Type": "Failed login" if event["type"] == "login_failed" else "Successful login",
-                        "IP": event["ip"],
-                        "IP status": "Known" if event["ip"] in known else "Unfamiliar",
-                        "Country": event.get("country", ""),
-                        "Rule evidence": event["id"] in evidence,
-                    }
-                    for event in ordered
-                ],
-                hide_index=True,
-            )
     with card(engine_column, "inc-engine"):
         st.markdown("**Engine Analysis**")
         for flag in analysis["flags"] or ["No configured rule matched the available events."]:
@@ -914,6 +898,24 @@ def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
         st.caption("Rule-based findings and score: not a probability and not proof of compromise.")
         if st.button("View Full Report", key="engine_full_report", icon=":material/description:"):
             full_report_dialog(incident["id"])
+    # Full width below both columns so every column of the table fits without sideways scrolling.
+    with st.expander("Event table"):
+        st.dataframe(
+            [
+                {
+                    "Event": event["id"],
+                    "Time (UTC)": event["time_utc"],
+                    "Type": "Failed login" if event["type"] == "login_failed" else "Successful login",
+                    "IP": event["ip"],
+                    "IP status": "Known" if event["ip"] in known else "Unfamiliar",
+                    "Country": event.get("country", ""),
+                    # Text, not a boolean: a read-only checkbox looks clickable but does nothing.
+                    "Rule evidence": "✓ Evidence" if event["id"] in evidence else "—",
+                }
+                for event in ordered
+            ],
+            hide_index=True,
+        )
 
 
 @st.dialog("Engine analysis — full report", width="medium")
@@ -1243,7 +1245,7 @@ def audit_page() -> None:
                     "Time (UTC)": record["time_utc"],
                     "Incident": record["incident_id"],
                     "Decision": DECISION_LABELS.get(record["decision"], record["decision"]),
-                    "Simulation only": record["simulation_only"],
+                    "Simulation only": "Yes" if record["simulation_only"] else "No",
                     "Actor": record["actor"],
                     "Report reference": record["report_id"],
                 }

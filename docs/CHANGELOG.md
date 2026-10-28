@@ -70,6 +70,7 @@
 - Incident Overview donut is centred in its card and larger (232px instead of 164px across) with a thicker ring, rounded slice ends, small gaps between slices, and a bigger total; the legend is now a centred row of stat blocks below the chart.
 - Status cards use stronger tints (the gradient no longer fades to white), deeper borders, white icon chips, and darker captions for contrast.
 - Incident header: the classification badge no longer touches the heading's icon tile (heading line height matches the tile, with a small gap below).
+- Event table: "Rule evidence" shows "✓ Evidence" or "—" instead of a read-only checkbox that looked clickable, and the table now spans the full width below the timeline so all seven columns fit. Audit History's "Simulation only" column shows "Yes"/"No" for the same reason.
 
 ## Documentation and delivery assets
 

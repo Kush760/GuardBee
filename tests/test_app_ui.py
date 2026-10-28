@@ -171,6 +171,7 @@ class TestGuardBeeUI(unittest.TestCase):
         app = open_incident("INC-1001")
         timeline = app.dataframe[0].value
         self.assertEqual(list(timeline["Time (UTC)"]), sorted(timeline["Time (UTC)"]))
+        self.assertEqual(list(timeline["Rule evidence"]), ["—"] + ["✓ Evidence"] * 5)  # text, never a checkbox
         rules = app.dataframe[1].value
         expected = engine.analyze_incident(data_loader.load_incidents(APP_PATH.parent / "data" / "incidents.json")[0])
         self.assertEqual(list(rules["Rule"]), [hit["rule_id"] for hit in expected["rule_hits"]])
@@ -234,6 +235,7 @@ class TestGuardBeeUI(unittest.TestCase):
         history = app.dataframe[0].value
         self.assertEqual(list(history["Incident"]), ["INC-1001"])
         self.assertEqual(list(history["Decision"]), ["✅ APPROVED"])
+        self.assertEqual(list(history["Simulation only"]), ["Yes"])
         self.assertIn("SIMULATION ONLY", page_text(app))
 
         app.button(key="audit_open").click().run()
