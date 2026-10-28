@@ -105,6 +105,10 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [class*="st-key-kpi-icon-"] { gap: 0 !important; padding: 0 !important; }
 [class*="st-key-kpi-icon-"] > div { width: auto !important; }
 [class*="st-key-kpi-icon-"] [data-testid="stMarkdownContainer"], [class*="st-key-kpi-icon-"] p { margin: 0 !important; line-height: 1; }
+[class*="st-key-tone-"] [data-testid="stCaptionContainer"] p { color: #475569; }  /* readable on the deeper tints */
+/* White chips stand out on the tinted cards; the icon keeps the tone colour. */
+[class*="st-key-kpi-icon-"][class*="st-key-kpi-icon-"] { background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 6px rgba(20, 33, 61, 0.08); }
 [class*="st-key-kpi-icon-"] span[role="img"] { font-size: 1.3rem; color: inherit; }
 [class*="st-key-kpi-icon-red"] { background: #FECACA; color: #DC2626; }
 [class*="st-key-tone-red-kpi"] [data-testid="stMetricLabel"] p { color: #DC2626; }
@@ -265,15 +269,15 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
   box-shadow: 0 1px 2px rgba(20, 33, 61, 0.04), 0 4px 16px rgba(20, 33, 61, 0.04);
 }
 [class*="st-key-tone-"] { border-radius: 12px; }
-[class*="st-key-tone-red"] { background: linear-gradient(135deg, #FFE4E6 0%, #FFF5F6 45%, #FFFFFF 100%) !important; border-color: #FECDD3 !important; }
+[class*="st-key-tone-red"] { background: linear-gradient(135deg, #FECACA 0%, #FEE2E2 55%, #FFF1F2 100%) !important; border-color: #FCA5A5 !important; }
 [class*="st-key-tone-red"] [data-testid="stMetricValue"] { color: #DC2626; }
-[class*="st-key-tone-green"] { background: linear-gradient(135deg, #DCFCE7 0%, #F3FDF6 45%, #FFFFFF 100%) !important; border-color: #BBF7D0 !important; }
+[class*="st-key-tone-green"] { background: linear-gradient(135deg, #BBF7D0 0%, #DCFCE7 55%, #F0FDF4 100%) !important; border-color: #86EFAC !important; }
 [class*="st-key-tone-green"] [data-testid="stMetricValue"] { color: #16A34A; }
-[class*="st-key-tone-amber"] { background: linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 45%, #FFFFFF 100%) !important; border-color: #FDE68A !important; }
+[class*="st-key-tone-amber"] { background: linear-gradient(135deg, #FDE68A 0%, #FEF3C7 55%, #FFFBEB 100%) !important; border-color: #FCD34D !important; }
 [class*="st-key-tone-amber"] [data-testid="stMetricValue"] { color: #D97706; }
-[class*="st-key-tone-blue"] { background: linear-gradient(135deg, #DBEAFE 0%, #F0F6FF 45%, #FFFFFF 100%) !important; border-color: #BFDBFE !important; }
+[class*="st-key-tone-blue"] { background: linear-gradient(135deg, #BFDBFE 0%, #DBEAFE 55%, #EFF6FF 100%) !important; border-color: #93C5FD !important; }
 [class*="st-key-tone-blue"] [data-testid="stMetricValue"] { color: #2563EB; }
-[class*="st-key-tone-violet"] { background: linear-gradient(135deg, #EDE9FE 0%, #F7F5FF 45%, #FFFFFF 100%) !important; border-color: #DDD6FE !important; }
+[class*="st-key-tone-violet"] { background: linear-gradient(135deg, #DDD6FE 0%, #EDE9FE 55%, #F5F3FF 100%) !important; border-color: #C4B5FD !important; }
 [class*="st-key-tone-violet"] [data-testid="stMetricValue"] { color: #6D28D9; }
 [data-testid="stMain"] button[data-testid="stBaseButton-primary"]:not(:disabled) {
   background: linear-gradient(90deg, #4F46E5 0%, #6366F1 55%, #7C3AED 100%); border: none; color: #FFFFFF;
