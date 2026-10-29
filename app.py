@@ -1263,6 +1263,12 @@ def incidents_page() -> None:
 # ---------------------------------------------------------------------------
 # Page 3 - Audit History
 # ---------------------------------------------------------------------------
+def selected_record(shown: list[dict[str, Any]], cells: list[Any]) -> dict[str, Any]:
+    """The audit record whose cell was clicked, else the newest shown record."""
+    row = cells[0][0] if cells else 0
+    return shown[row] if 0 <= row < len(shown) else shown[0]
+
+
 def audit_page() -> None:
     page_header(
         "Audit History",
@@ -1295,7 +1301,7 @@ def audit_page() -> None:
             for record in records
             if decision_filter in ("All", record["decision"]) and incident_filter in ("All", record["incident_id"])
         ]
-        st.dataframe(
+        table = st.dataframe(
             [
                 {
                     "Time (UTC)": record["time_utc"],
@@ -1308,19 +1314,20 @@ def audit_page() -> None:
                 for record in shown
             ],
             hide_index=True,
+            on_select="rerun",
+            # Clicking any cell picks its row. One selection mode only: a ticked row checkbox would
+            # otherwise outrank a later cell click, and the app cannot tell which came last.
+            selection_mode="single-cell",
+            # Selection is positional, so a new filter gets a fresh table (and selection).
+            key=f"audit_table:{decision_filter}:{incident_filter}",
+            selection_default={"selection": {"rows": [], "columns": [], "cells": [(0, "Time (UTC)")] if shown else []}},
         )
-        st.caption(f"Showing {len(shown)} of {len(records)} record(s).")
+        st.caption(f"Showing {len(shown)} of {len(records)} record(s). Click a row to see its details below.")
 
     if shown:
+        record = selected_record(shown, table.selection.cells)
         with st.container(border=True):
             st.subheader("Record detail")
-            index = st.selectbox(
-                "Record",
-                range(len(shown)),
-                format_func=lambda i: f"{shown[i]['time_utc']} · {shown[i]['incident_id']} · {shown[i]['decision']}",
-                key="audit_record",
-            )
-            record = shown[index]
             details = st.columns(3)
             details[0].markdown(f"**Decision**  \n{DECISION_LABELS.get(record['decision'], md(record['decision']))}")
             details[1].markdown(f"**Incident**  \n{md(record['incident_id'])}")

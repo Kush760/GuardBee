@@ -2,19 +2,19 @@
 
 ## Recorded automated result
 
-The current codebase contains 113 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
+The current codebase contains 114 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Recorded result (`dev` branch, Security Analytics Console UI with the v2.3 dynamic-scoring engine and 16-incident dataset): **113 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
+Recorded result (`dev` branch, Security Analytics Console UI with the v2.3 dynamic-scoring engine and 16-incident dataset): **114 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
 
 All tests are offline. Provider tests use mocks or an in-process `httpx.MockTransport` and never contact Nebius. UI tests replace `ai_client.generate_report` with a mock that fails the test if any path tries to reach the provider, even when a local `.streamlit/secrets.toml` exists.
 
 ## Test inventory
 
-### `TestGuardBeeUI` (24) — headless Streamlit `AppTest`
+### `TestGuardBeeUI` (25) — headless Streamlit `AppTest`
 
 Pages are reached through the app's own controls (Dashboard "View All" plus the incident list, Dashboard Recent Incidents "View", decision panel "View in Audit History", Audit History "Open incident"), so navigation buttons are exercised too.
 
@@ -33,6 +33,7 @@ Pages are reached through the app's own controls (Dashboard "View All" plus the 
 - `test_load_error_shows_no_counts`
 - `test_validated_report_allows_exactly_one_decision`
 - `test_audit_history_shows_decision_and_links_back`
+- `test_audit_detail_follows_the_selected_row`
 - `test_changing_incident_invalidates_report`
 - `test_approve_outcome_describes_the_engine_action`
 - `test_recorded_decision_is_shown_after_switching_incidents`

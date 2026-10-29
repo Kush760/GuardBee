@@ -248,6 +248,23 @@ class TestGuardBeeUI(unittest.TestCase):
         self.assertEqual(app.radio(key="incident_picker").value, "INC-1001")
         self.assertTrue(app.button(key="btn_approve").disabled)  # the recorded decision still locks it
 
+    def test_audit_detail_follows_the_selected_row(self):
+        app = self.approve_validated_report()
+        app.button(key="ai_request_btn").click().run()  # a new report allows one more decision
+        app.button(key="btn_reject").click().run()
+        app.button(key="open_audit").click().run()
+        self.assertEqual(list(app.dataframe[0].value["Decision"]), ["⛔ REJECTED", "✅ APPROVED"])
+        detail = lambda: next(m.value for m in app.markdown if m.value.startswith("**Decision**"))
+        self.assertIn("REJECTED", detail())  # newest record by default
+
+        app.session_state["audit_table:All:All"] = {"selection": {"rows": [], "columns": [], "cells": [[1, "Actor"]]}}
+        app.run()
+        self.assertIn("APPROVED", detail())  # clicking any cell of the older row shows it
+
+        app.session_state["audit_table:All:All"] = {"selection": {"rows": [], "columns": [], "cells": []}}
+        app.run()
+        self.assertIn("REJECTED", detail())  # clearing the selection falls back to the newest
+
     def test_changing_incident_invalidates_report(self):
         self.use_report(VALID_REPORT)
         app = open_incident("INC-1001")
