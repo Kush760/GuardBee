@@ -298,6 +298,22 @@ class TestGuardBeeUI(unittest.TestCase):
         self.assertIn("Low severity (0)", options)
         self.assertIn("Suspicious (6)", options)
 
+    def test_requesting_a_report_opens_the_ai_analysis_tab(self):
+        self.use_report(VALID_REPORT)
+        app = open_incident("INC-1001")
+        self.assertEqual(app.session_state["incident_tabs"], "Timeline")
+        app.button(key="ai_request_btn").click().run()
+        self.assertFalse(app.exception)
+        self.assertEqual(app.session_state["incident_tabs"], "AI Analysis")
+
+        app.radio(key="incident_picker").set_value("INC-1002").run()  # a new incident starts on its timeline
+        self.assertEqual(app.session_state["incident_tabs"], "Timeline")
+
+        self.generate.side_effect = ai_client.AIReportError("Nebius Token Factory did not return a report.")
+        app.button(key="ai_request_btn").click().run()  # a failure is shown there too
+        self.assertFalse(app.exception)
+        self.assertEqual(app.session_state["incident_tabs"], "AI Analysis")
+
     def test_invalid_citations_keep_decision_locked(self):
         self.use_report("EVT-999 per POL-001.")
         app = open_incident("INC-1001")
