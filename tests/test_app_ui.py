@@ -90,7 +90,12 @@ class TestGuardBeeUI(unittest.TestCase):
     def test_app_injects_no_dynamic_html(self):
         source = APP_PATH.read_text(encoding="utf-8")
         self.assertNotIn("unsafe_allow_html", source)
-        self.assertEqual(re.findall(r"st\.html\((.*?)\)", source), ["STYLES"])
+        # Only fixed constants reach st.html: the stylesheet and the data-free scroll-to-tabs script.
+        self.assertEqual(
+            re.findall(r"st\.html\((.*?)\)", source),
+            ["STYLES", "SCROLL_TO_TABS, unsafe_allow_javascript=True"],
+        )
+        self.assertIn('SCROLL_TO_TABS = """<script>', source)  # a plain literal, never an f-string
 
     def test_dashboard_counts_come_from_engine(self):
         app = start_app()
@@ -308,6 +313,7 @@ class TestGuardBeeUI(unittest.TestCase):
         app.button(key="ai_request_btn").click().run()
         self.assertFalse(app.exception)
         self.assertEqual(app.session_state["incident_tabs"], "AI Analysis")
+        self.assertNotIn("scroll_to_tabs", app.session_state)  # the scroll ran once and was consumed
 
         app.radio(key="incident_picker").set_value("INC-1002").run()  # a new incident starts on its timeline
         self.assertEqual(app.session_state["incident_tabs"], "Timeline")

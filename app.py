@@ -106,6 +106,10 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
   padding: 0.1rem 0 0.4rem !important; }
 [data-testid="stMain"] h3 [data-testid="stHeaderActionElements"],
 [data-testid="stMain"] h4 [data-testid="stHeaderActionElements"] { display: none; }
+/* A heading that follows other content gets room above it, so each section starts visibly. */
+[data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:not(:first-child) h3,
+[data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:not(:first-child) h4 {
+  padding-top: 0.75rem !important; }
 [data-testid="stMain"] [class*="st-key-tone-"] { min-height: 132px; }
 [class*="st-key-tone-"][class*="-kpi-"] { position: relative; padding-left: 3.9rem !important; min-height: 176px; }
 [class*="st-key-tone-"][class*="-kpi-"] [data-testid="stMetricLabel"] p { text-transform: none; letter-spacing: 0;
@@ -479,6 +483,13 @@ def clear_report_state() -> None:
 INCIDENT_TABS_KEY = "incident_tabs"
 TAB_TIMELINE = "Timeline"
 TAB_AI = "AI Analysis"
+# Fixed script (no data inside): after a report request, bring the incident tabs into view.
+SCROLL_TO_TABS = """<script>
+setTimeout(() => {
+  const tabs = document.querySelector('[data-testid="stMain"] [data-testid="stTabs"]');
+  if (tabs) tabs.scrollIntoView({behavior: "smooth", block: "start"});
+}, 250);
+</script>"""
 
 
 def reset_investigation_state(incident_id: str) -> None:
@@ -1148,6 +1159,7 @@ def render_investigation(incident: dict[str, Any]) -> None:
             run_ai_analysis(incident, analysis, matched_policies, context_id)
             # The tabs render later in this run, so the outcome opens straight on the AI Analysis tab.
             st.session_state[INCIDENT_TABS_KEY] = TAB_AI
+            st.session_state.scroll_to_tabs = True
         # Report the outcome beside the button; the full report and Retry live in the AI Analysis tab.
         if st.session_state.report:
             st.success("AI report ready and citation-validated. It is open in the **AI Analysis** tab below.", icon="✅")
@@ -1177,7 +1189,8 @@ def render_investigation(incident: dict[str, Any]) -> None:
     render_basic_info(incident)
 
     timeline_tab, rules_tab, policy_tab, ai_tab = st.tabs(
-        [TAB_TIMELINE, "Rules & Evidence", "Relevant Policies", TAB_AI], key=INCIDENT_TABS_KEY
+        # on_change="rerun" makes the tabs a tracked widget, so setting INCIDENT_TABS_KEY selects a tab.
+        [TAB_TIMELINE, "Rules & Evidence", "Relevant Policies", TAB_AI], key=INCIDENT_TABS_KEY, on_change="rerun"
     )
     with timeline_tab:
         render_timeline(incident, analysis)
@@ -1187,6 +1200,8 @@ def render_investigation(incident: dict[str, Any]) -> None:
         render_policies(matched_policies)
     with ai_tab:
         render_ai_panel(incident, analysis, matched_policies, context_id)
+    if st.session_state.pop("scroll_to_tabs", False):  # once, on the run that handled the request
+        st.html(SCROLL_TO_TABS, unsafe_allow_javascript=True)
 
     with keyed(st, "layout-pair"):
         policies_column, decision_column = st.columns(2, gap="small")
