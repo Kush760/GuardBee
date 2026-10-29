@@ -35,3 +35,10 @@
 **Decision:** Record only session-state audit entries.  
 **Why:** The hackathon scope excludes real account control.  
 **Consequence:** Audit history is non-durable and must be described honestly.
+
+## ADR-007: Event-based dynamic scoring (v2.3)
+
+**Decision:** Build the risk score from each incident's events (failure count, burst speed, sign-ins after the failures, unfamiliar IPs, new country, impossible travel, off-hours, known-only sign-ins) instead of fixed amounts per rule, add a CRITICAL severity band, and give events synthetic city/country locations.  
+**Why:** With fixed amounts every HIGH incident scored 70 and every MEDIUM one 55, LOW never occurred, and every unfamiliar-IP event was located "Unknown", so scores did not tell incidents apart.  
+**Approval:** Requested by the project owner on 30 Oct 2026 ("START IMPLEMENTATION" on `GuardBee_change_instructions.txt`), which approves this change to the protected `engine.py` and `data_loader.py`. The suggested defaults were used for the open decisions: the listed point values, a CRITICAL band, department never affects the score, and 00:00-05:00 UTC as off-hours.  
+**Consequence:** Scoring stays deterministic and in `engine.py` (ADR-002); every point is a visible rule hit. Context signals only weigh incidents that are already suspicious. Policy retrieval queries include the new rule flags, so flag wording was chosen to keep each incident's policy matches relevant.

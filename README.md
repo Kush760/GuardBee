@@ -34,7 +34,7 @@ GuardBee is a hackathon MVP, not production security software. It has no real id
 
 ## Synthetic data format
 
-`data/incidents.json` and `data/policies.json` must be non-empty JSON arrays. Incident records require non-empty `id`, `title`, `account`, and `department` strings; a `known_ips` string array; and at least one event with `id`, ISO-8601 `time_utc`, `type` (`login_failed` or `login_success`), `ip`, and `country`. Policy records require non-empty `id`, `title`, and `text` strings. IDs must be unique in their collections.
+`data/incidents.json` and `data/policies.json` must be non-empty JSON arrays. Incident records require non-empty `id`, `title`, `account`, and `department` strings; a `known_ips` string array; and at least one event with `id`, ISO-8601 `time_utc`, `type` (`login_failed` or `login_success`), `ip`, and `country`. `home_city` and `home_country` (incident) and `city` (event) are optional non-empty strings. Policy records require non-empty `id`, `title`, and `text` strings. IDs must be unique in their collections.
 
 GuardBee stops safely with an actionable UI error if these checks fail. It does not substitute fallback data or allow an invalid incident to reach analysis, AI, approval, or audit steps.
 

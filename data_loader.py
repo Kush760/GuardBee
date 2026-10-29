@@ -17,6 +17,12 @@ def _require_string(value: Any, field: str, context: str) -> None:
         raise DataValidationError(f"{context}.{field} must be a non-empty string.")
 
 
+def _optional_string(item: dict[str, Any], field: str, context: str) -> None:
+    """An optional field may be absent, but when present it must be a non-empty string."""
+    if field in item:
+        _require_string(item[field], field, context)
+
+
 def _require_unique_ids(items: list[dict[str, Any]], context: str) -> None:
     identifiers = [item["id"] for item in items]
     if len(identifiers) != len(set(identifiers)):
@@ -28,6 +34,7 @@ def _validate_event(event: Any, context: str) -> None:
         raise DataValidationError(f"{context} must be an object.")
     for field in ("id", "time_utc", "type", "ip", "country"):
         _require_string(event.get(field), field, context)
+    _optional_string(event, "city", context)
     if event["type"] not in {"login_failed", "login_success"}:
         raise DataValidationError(f"{context}.type must be login_failed or login_success.")
     try:
@@ -46,6 +53,8 @@ def validate_incidents(value: Any) -> list[dict[str, Any]]:
             raise DataValidationError(f"{context} must be an object.")
         for field in ("id", "title", "account", "department"):
             _require_string(incident.get(field), field, context)
+        for field in ("home_city", "home_country"):
+            _optional_string(incident, field, context)
         known_ips = incident.get("known_ips")
         if not isinstance(known_ips, list) or not all(
             isinstance(ip, str) and ip.strip() for ip in known_ips

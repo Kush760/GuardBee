@@ -33,14 +33,17 @@ class TestPolicyRetrieval(unittest.TestCase):
             "INC-1003": ["POL-001"],
             "INC-1004": ["POL-001"],
             "INC-1005": ["POL-001"],
-            "INC-1006": ["POL-001"],
+            "INC-1006": ["POL-001", "POL-004"],
             "INC-1007": ["POL-001", "POL-004"],
             "INC-1008": ["POL-001"],
             "INC-1009": ["POL-005"],
-            "INC-1010": ["POL-001", "POL-004"],
-            "INC-1012": ["POL-001"],
-            "INC-1013": ["POL-001", "POL-002"],
+            "INC-1010": ["POL-001"],
+            "INC-1011": ["POL-001"],
+            "INC-1012": ["POL-001", "POL-004"],
+            "INC-1013": ["POL-001", "POL-002", "POL-004"],
             "INC-1014": ["POL-001", "POL-004"],
+            "INC-1015": ["POL-001", "POL-005"],
+            "INC-1016": ["POL-001", "POL-005"],
         }
         for incident in self.incidents:
             with self.subTest(incident=incident["id"]):

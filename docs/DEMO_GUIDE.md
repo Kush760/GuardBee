@@ -11,7 +11,7 @@ Point to the **safety banner** at the top of the page to confirm the synthetic/s
 
 ### 0:20–0:55 — Sidebar and incident selection
 
-Open the left sidebar. Select **INC-1001 — Suspicious login after repeated failures**.
+Open the left sidebar. Select **INC-1001 — Suspicious Finance login after repeated failures**.
 The sidebar immediately shows the risk score and severity badge for a quick-glance summary.
 
 Switch to the main area and click the **Investigate** tab.

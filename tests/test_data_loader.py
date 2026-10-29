@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class TestDataValidation(unittest.TestCase):
     def test_existing_incident_data_is_valid(self):
         incidents = load_incidents(ROOT / "data" / "incidents.json")
-        self.assertEqual(len(incidents), 13)
+        self.assertEqual(len(incidents), 16)
 
     def test_missing_required_incident_field_is_rejected(self):
         with self.assertRaisesRegex(DataValidationError, "account"):
@@ -32,6 +32,28 @@ class TestDataValidation(unittest.TestCase):
             validate_incidents([invalid_incident])
         with self.assertRaisesRegex(DataValidationError, "non-empty"):
             validate_policies([])
+
+    def test_optional_location_fields_must_be_text_when_present(self):
+        incident = {
+            "id": "INC-X",
+            "title": "x",
+            "account": "x@example.test",
+            "department": "x",
+            "home_city": "Pune",
+            "home_country": "India",
+            "known_ips": [],
+            "events": [
+                {"id": "EVT-X", "time_utc": "2026-01-01T00:00:00Z", "type": "login_success", "ip": "203.0.113.1",
+                 "country": "India", "city": "Pune"}
+            ],
+        }
+        self.assertEqual(validate_incidents([incident]), [incident])
+        for target, field in ((incident, "home_country"), (incident["events"][0], "city")):
+            with self.subTest(field=field):
+                broken = json.loads(json.dumps(incident))
+                (broken if target is incident else broken["events"][0])[field] = "  "
+                with self.assertRaisesRegex(DataValidationError, field):
+                    validate_incidents([broken])
 
     def test_malformed_json_is_rejected(self):
         with patch.object(Path, "read_text", return_value="{"):

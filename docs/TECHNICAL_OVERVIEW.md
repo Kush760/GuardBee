@@ -37,7 +37,7 @@ An empty or below-threshold result is an explicit no-match state. The UI does no
 Both data files must be non-empty JSON arrays.
 
 - An incident requires non-empty `id`, `title`, `account`, and `department`; a `known_ips` list of non-empty strings; and at least one event.
-- An event requires non-empty `id`, `time_utc`, `type`, `ip`, and `country`. Timestamps must be ISO-8601, and type must be `login_failed` or `login_success`.
+- An event requires non-empty `id`, `time_utc`, `type`, `ip`, and `country`; `city` is optional. Incidents may add optional `home_city` and `home_country`. Timestamps must be ISO-8601, and type must be `login_failed` or `login_success`.
 - A policy requires non-empty `id`, `title`, and `text`.
 - Incident IDs, policy IDs, and IDs within each incident's events must be unique.
 

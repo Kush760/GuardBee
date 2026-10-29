@@ -2,13 +2,13 @@
 
 ## Recorded automated result
 
-The current codebase contains 100 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
+The current codebase contains 113 `unittest` test methods. The recorded local verification command, run from the repository root in a gitignored virtual environment created from `requirements.txt`, is:
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Recorded result (`dev` branch, Security Analytics Console UI with the v2.2 engine and 13-incident dataset): **100 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
+Recorded result (`dev` branch, Security Analytics Console UI with the v2.3 dynamic-scoring engine and 16-incident dataset): **113 tests passed** on Python 3.12.10 with `openai` 1.109.1, scikit-learn 1.9.1, and Streamlit 1.66.1. CI uses Python 3.11, which was not available locally, so the suite has not yet been run on 3.11. The UI tests need a working Streamlit install (`streamlit.testing`); an environment with mismatched Streamlit/Starlette versions fails to import them. The test time is environment-dependent; do not reuse an old duration as a new result without rerunning the command.
 
 All tests are offline. Provider tests use mocks or an in-process `httpx.MockTransport` and never contact Nebius. UI tests replace `ai_client.generate_report` with a mock that fails the test if any path tries to reach the provider, even when a local `.streamlit/secrets.toml` exists.
 
@@ -45,7 +45,7 @@ Pages are reached through the app's own controls (Dashboard "View All" plus the 
 
 Manual visual check (headless Microsoft Edge screenshots, 1440px and 1280px wide, sidebar expanded and collapsed): all three pages, every investigation tab, and the generated-report and recorded-decision states (using a canned report, no provider call). The dashboard fits a 1440×900 viewport without scrolling; at 1280px its KPI cards stay one height and every Recent Incidents column is visible. Responsive check at 1100px, 820px (tablet), and 390px (phone): no horizontal page scroll; KPI cards wrap, the dashboard and incident layouts stack, the sidebar starts collapsed on a phone, and every action (View, Request AI Report, Approve/Reject) stays reachable.
 
-Classification, severity, and priority display is tested against real `engine.py` output (INC-1001 SUSPICIOUS/HIGH, INC-1002 INSUFFICIENT_EVIDENCE/LOW, INC-1003 NORMAL/NONE with severity "Not assigned"). The pre-classification fallback ("NOT CLASSIFIED", dashboard by severity) is tested with a patched engine result. Still untestable until the backend provides them: partial validation with rejected-record reporting, and audit history that survives an app restart (SQLite).
+Classification, severity, and priority display is tested against real `engine.py` output (INC-1001 SUSPICIOUS/HIGH 65, INC-1002 INSUFFICIENT_EVIDENCE/LOW, INC-1003 NORMAL/NONE with severity "Not assigned"). The pre-classification fallback ("NOT CLASSIFIED", dashboard by severity) is tested with a patched engine result. Still untestable until the backend provides them: partial validation with rejected-record reporting, and audit history that survives an app restart (SQLite).
 
 ### `TestReportValidation` (17)
 
@@ -103,16 +103,17 @@ Classification, severity, and priority display is tested against real `engine.py
 - `test_invalid_arguments_are_rejected`
 - `test_malformed_policy_entries_are_rejected`
 
-### `TestDataValidation` (6)
+### `TestDataValidation` (7)
 
 - `test_existing_incident_data_is_valid`
 - `test_missing_required_incident_field_is_rejected`
 - `test_invalid_event_type_and_empty_policy_data_are_rejected`
+- `test_optional_location_fields_must_be_text_when_present`
 - `test_malformed_json_is_rejected`
 - `test_missing_file_is_rejected`
 - `test_policy_requires_text`
 
-### `TestGuardBeeDetectionEngine` (16) and `TestGuardBeePolicyRetrieval` (3) — `tests/test_engine.py`, from v2.2
+### `TestGuardBeeDetectionEngine` (16), `TestDynamicScoring` (12) and `TestGuardBeePolicyRetrieval` (3) — `tests/test_engine.py`
 
 - `test_production_suspicious_incident_has_explainable_evidence`
 - `test_normal_known_ip_login_has_no_low_severity`
@@ -125,11 +126,23 @@ Classification, severity, and priority display is tested against real `engine.py
 - `test_empty_ip_is_insufficient_evidence_not_unfamiliar`
 - `test_overlapping_rules_do_not_double_count_failure_points`
 - `test_same_failure_burst_with_multiple_successes_scores_rule_003_once`
-- `test_independent_failure_success_patterns_can_each_contribute`
+- `test_independent_patterns_add_sign_ins_and_ips_without_double_counting`
 - `test_finance_and_non_finance_identical_pattern_score_parity`
 - `test_risk_score_and_classification_remain_separate`
 - `test_score_is_capped_at_100`
 - `test_configurable_burst_window_parameter`
+- `test_severity_band_edges` (0, 14, 15, 39/40, 64/65, 84/85, 100)
+- `test_priority_follows_severity`
+- `test_burst_points_grow_per_failure_up_to_30`
+- `test_fast_burst_scores_more_than_slow_burst`
+- `test_each_extra_sign_in_adds_five_up_to_25`
+- `test_new_country_needs_a_known_home_and_a_located_sign_in`
+- `test_impossible_travel_within_three_hours`
+- `test_off_hours_sign_in_adds_four`
+- `test_known_only_sign_ins_lower_the_score_but_stay_suspicious`
+- `test_context_signals_never_make_activity_suspicious`
+- `test_rule_points_add_up_to_every_bundled_score`
+- `test_bundled_scores_spread_across_every_severity`
 - `test_tfidf_returns_ranked_policy_records`
 - `test_tfidf_returns_no_match_for_unrelated_or_empty_query`
 - `test_tfidf_threshold_can_exclude_weak_matches`

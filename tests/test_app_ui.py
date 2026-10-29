@@ -95,8 +95,8 @@ class TestGuardBeeUI(unittest.TestCase):
     def test_dashboard_counts_come_from_engine(self):
         app = start_app()
         values = metric_values(app)
-        self.assertEqual(values["Total valid incidents"], "13")
-        self.assertEqual(values["Suspicious"], "6")
+        self.assertEqual(values["Total valid incidents"], "16")
+        self.assertEqual(values["Suspicious"], "9")
         self.assertEqual(values["Normal"], "3")
         self.assertEqual(values["Insufficient Evidence"], "4")
         self.assertEqual(values["Rejected records"], "0")
@@ -294,9 +294,12 @@ class TestGuardBeeUI(unittest.TestCase):
 
     def test_filter_options_show_match_counts(self):
         options = open_incident("INC-1001").selectbox(key="incident_filter").options
-        self.assertIn("All (13)", options)
-        self.assertIn("Low severity (0)", options)
-        self.assertIn("Suspicious (6)", options)
+        self.assertIn("All (16)", options)
+        self.assertIn("Critical severity (1)", options)
+        self.assertIn("High severity (2)", options)
+        self.assertIn("Medium severity (3)", options)
+        self.assertIn("Low severity (3)", options)
+        self.assertIn("Suspicious (9)", options)
 
     def test_requesting_a_report_opens_the_ai_analysis_tab(self):
         self.use_report(VALID_REPORT)

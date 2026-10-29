@@ -51,15 +51,19 @@ CLASSIFICATIONS = {
     ),
     "NORMAL": ("green", "No suspicious pattern was detected by the configured rules in the available events."),
 }
-SEVERITY_COLORS = {"HIGH": "red", "MEDIUM": "orange", "LOW": "blue"}
+SEVERITY_COLORS = {"CRITICAL": "violet", "HIGH": "red", "MEDIUM": "orange", "LOW": "blue"}
 # Card tints (see the tone-* rules in STYLES); they follow engine output, never invent it.
 CLASSIFICATION_TONES = {"SUSPICIOUS": "red", "NORMAL": "green", "INSUFFICIENT_EVIDENCE": "amber"}
-SEVERITY_TONES = {"HIGH": "red", "MEDIUM": "amber", "LOW": "blue"}
+SEVERITY_TONES = {"CRITICAL": "red", "HIGH": "red", "MEDIUM": "amber", "LOW": "blue"}
 # Same hues as the tone-* card values; green stays reserved for the NORMAL classification.
-SEVERITY_HEX = {"HIGH": "#DC2626", "MEDIUM": "#D97706", "LOW": "#2563EB", "Not assigned": "#64748B"}
+SEVERITY_HEX = {
+    "CRITICAL": "#7C3AED", "HIGH": "#DC2626", "MEDIUM": "#D97706", "LOW": "#2563EB", "Not assigned": "#64748B"
+}
 CLASSIFICATION_HEX = {"SUSPICIOUS": "#DC2626", "NORMAL": "#16A34A", "INSUFFICIENT_EVIDENCE": "#D97706"}
 # Markdown colour names for legend dots, matched to the chart hues above.
-LEGEND_DOTS = {"#DC2626": "red", "#16A34A": "green", "#D97706": "orange", "#2563EB": "blue", "#64748B": "gray"}
+LEGEND_DOTS = {
+    "#7C3AED": "violet", "#DC2626": "red", "#16A34A": "green", "#D97706": "orange", "#2563EB": "blue", "#64748B": "gray"
+}
 # Keyed containers (needed for per-card tints) arrived in newer Streamlit; older ones stay untinted.
 CONTAINER_TAKES_KEY = "key" in inspect.signature(st.container).parameters
 DECISION_LABELS = {"APPROVED": "✅ APPROVED", "REJECTED": "⛔ REJECTED"}
@@ -567,6 +571,13 @@ def classification_badge(analysis: dict[str, Any]) -> str:
     return f":{CLASSIFICATIONS[value][0]}-background[{value.replace('_', ' ')}]"
 
 
+def location(item: dict[str, Any], city_field: str = "city", country_field: str = "country") -> str:
+    """'City, Country' from synthetic location labels; 'Unknown' when none was recorded."""
+    parts = [item.get(city_field), item.get(country_field)]
+    text = ", ".join(part.strip() for part in parts if isinstance(part, str) and part.strip())
+    return text or "Unknown"
+
+
 def severity_text(analysis: dict[str, Any]) -> str:
     return analysis.get("severity") or NOT_ASSIGNED
 
@@ -877,10 +888,11 @@ def render_basic_info(incident: dict[str, Any]) -> None:
     fields = (
         ("Account", code(incident["account"])),
         ("Department", md(incident["department"])),
-        ("Known IPs", code(", ".join(incident.get("known_ips", [])) or "none listed")),
+        ("Known IPs · Home", f"{code(', '.join(incident.get('known_ips', [])) or 'none listed')} · "
+                             f"{md(location(incident, 'home_city', 'home_country'))}"),
         ("Latest event", "Failed login" if latest["type"] == "login_failed" else "Successful login"),
         ("Timestamp (UTC)", md(latest["time_utc"])),
-        ("Source IP · Location", f"{code(latest['ip'])} · {md(latest.get('country') or 'Unknown')}"),
+        ("Source IP · Location", f"{code(latest['ip'])} · {md(location(latest))}"),
     )
     with card(st, "inc-basic"):
         card_title("Basic Information")
@@ -910,7 +922,7 @@ def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
                 tag = " :violet-background[evidence]" if event["id"] in evidence else ""
                 what.markdown(
                     f"**{'Failed login' if failed else 'Successful login'}** from {code(event['ip'])} "
-                    f"({place}, {md(event.get('country') or 'Unknown')}){tag}"
+                    f"({place}, {md(location(event))}){tag}"
                 )
     with card(engine_column, "inc-engine"):
         card_title("Engine Analysis")
@@ -930,7 +942,7 @@ def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
                     "Type": "Failed login" if event["type"] == "login_failed" else "Successful login",
                     "IP": event["ip"],
                     "IP status": "Known" if event["ip"] in known else "Unfamiliar",
-                    "Country": event.get("country", ""),
+                    "Location": location(event),
                     # Text, not a boolean: a read-only checkbox looks clickable but does nothing.
                     "Rule evidence": "✓ Evidence" if event["id"] in evidence else "—",
                 }
@@ -1200,7 +1212,10 @@ def render_investigation(incident: dict[str, Any]) -> None:
     )
 
 
-INCIDENT_FILTERS = {"All": None, "High severity": "HIGH", "Medium severity": "MEDIUM", "Low severity": "LOW"}
+INCIDENT_FILTERS = {
+    "All": None, "Critical severity": "CRITICAL", "High severity": "HIGH", "Medium severity": "MEDIUM",
+    "Low severity": "LOW",
+}
 if any_classified:
     INCIDENT_FILTERS.update({key.replace("_", " ").title(): key for key in CLASSIFICATIONS})
 
