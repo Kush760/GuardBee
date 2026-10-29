@@ -250,6 +250,16 @@ class TestProviderBoundary(unittest.TestCase):
         )
         self.assertIn("token budget", str(error))
 
+    def test_unicode_dashes_in_ids_are_normalized_before_validation(self):
+        content = "EVT‑1 per POL‑1. Prose keeps its dash — like this."
+        report = self.generate(lambda request: httpx.Response(200, json=chat_completion(content)))
+        self.assertEqual(report, "EVT-1 per POL-1. Prose keeps its dash — like this.")
+        self.assertTrue(validate_report_citations(report, ["EVT-1"], ["POL-1"])[0])
+        fake = self.generate(lambda request: httpx.Response(200, json=chat_completion("EVT‑999 per POL-1.")))
+        usable, reason = validate_report_citations(fake, ["EVT-1"], ["POL-1"])
+        self.assertFalse(usable)  # normalizing never turns an unknown ID into a valid citation
+        self.assertIn("EVT-999", reason)
+
     def test_reasoning_block_is_removed_from_report(self):
         content = "<think>private reasoning EVT-9</think>\n## Observed facts\nEVT-1 per POL-1."
         report = self.generate(lambda request: httpx.Response(200, json=chat_completion(content)))

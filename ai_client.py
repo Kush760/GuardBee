@@ -32,6 +32,17 @@ MAX_TOKENS = 2000
 _THINK_BLOCK = re.compile(r"<think>.*?(?:</think>|$)", re.IGNORECASE | re.DOTALL)
 
 
+def _normalize_id_dashes(report: str) -> str:
+    """Rewrite look-alike dashes inside EVT/POL IDs as ASCII hyphens before validation and display.
+
+    Reasoning models often emit a non-breaking hyphen (U+2011). The shown and validated text stay
+    identical, and a normalized ID must still be a real current ID, so a fake one is still rejected.
+    validate_report_citations itself keeps rejecting any un-normalized Unicode-dash ID.
+    """
+    dash = re.compile(f"[{_DASHES}]")
+    return _ID_CANDIDATE.sub(lambda match: dash.sub("-", match.group(0)), report)
+
+
 def _failure_reason(exc: Exception, model: str, base_url: str) -> str:
     """Name the failure without echoing provider text, which may repeat the credential."""
     if isinstance(exc, openai.AuthenticationError):
@@ -97,7 +108,8 @@ def generate_report(
                         "Clearly separate observed facts from inferred risk and from unknowns. "
                         "The deterministic risk score is an estimate, not proof of compromise; "
                         "never state that a compromise is confirmed. "
-                        "Cite supplied EVT-* and POL-* IDs for relevant claims. "
+                        "Cite supplied EVT-* and POL-* IDs for relevant claims, written exactly as supplied "
+                        "with a plain ASCII hyphen (for example EVT-001), never a Unicode dash. "
                         "If evidence is insufficient, say so. Produce concise Markdown sections: "
                         "Observed facts; Inferred risk; Unknowns and limitations; Policy guidance; Recommended action. "
                         "Never say an action was executed."
@@ -116,7 +128,7 @@ def generate_report(
         raise AIReportError(_failure_reason(exc, model, base_url)) from exc
 
     if isinstance(report, str):
-        report = _THINK_BLOCK.sub("", report).strip()
+        report = _normalize_id_dashes(_THINK_BLOCK.sub("", report).strip())
     if not isinstance(report, str) or not report:
         if finish_reason == "length":
             raise AIReportError(
