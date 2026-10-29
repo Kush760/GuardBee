@@ -1,14 +1,14 @@
 # MVP Workflow
 
-MVP Scope v2.2 §7 names **Dashboard**, **Security Incidents**, and **Audit History** as workflow areas to improve. GuardBee delivers them in **one Streamlit page** (`app.py`): classification metrics and filters (dashboard), the **Investigate** / **Policy retrieval** tabs (security incidents), and the **Decision & audit** tab (audit history). Separate multipage routes are **not** required; see [ADR-008](DECISIONS.md#adr-008-single-page-ui-for-mvp-scope-v22--7).
+MVP Scope v2.2 §7 names **Dashboard**, **Security Incidents**, and **Audit History** as workflow areas to improve. GuardBee delivers them as three Streamlit navigation views in `app.py` (`st.navigation` / `st.Page`): Dashboard KPIs and recent incidents, Security Incidents investigation (timeline, rules, policies, AI analysis), and Audit History for persisted simulated decisions. See [ADR-008](DECISIONS.md#adr-008-streamlit-navigation-for-mvp-scope-v22--7).
 
 ## 1. Security Dashboard
 
-The analyst filters incidents by classification (`SUSPICIOUS`, `NORMAL`, `INSUFFICIENT_EVIDENCE`, or All). Counts for each classification are shown. Severity is displayed only when applicable (`N/A` for normal and insufficient-evidence cases). Normal activity is not listed under the Suspicious filter.
+The Dashboard shows total valid incidents, classification counts from `engine.py`, rejected-record count from `load_incidents_partitioned()`, and a classification overview chart. Severity is displayed only when applicable (`N/A` / not assigned for normal and insufficient-evidence cases).
 
 ## 2. Incident Investigation
 
-GuardBee displays the synthetic account, department, classification, investigation priority, severity (or N/A), full event timeline, rule hits, and evidence IDs returned by `engine.py`. No model participates in this step. A risk score is not proof of compromise.
+On **Security Incidents**, GuardBee displays the synthetic account, department, classification, investigation priority, severity (or not assigned), chronological event timeline, rule hits, and evidence IDs returned by `engine.py`. No model participates in this step. A risk score is not proof of compromise.
 
 ## 3. Company Policy Check
 
@@ -16,10 +16,10 @@ The application creates a query from incident title, department, rule flags, and
 
 ## 4. AI Security Analysis
 
-When there is a policy match and the analyst clicks Analyze, GuardBee sends current synthetic incident facts, deterministic analysis, and retrieved policies to the configured Nebius endpoint. A report must cite current `EVT-*` IDs and retrieved `POL-*` IDs. Missing credentials, provider failures, malformed output, no policy match, or citation failure keep the report invalid and approval disabled.
+When there is a policy match and the analyst clicks **Request AI Report**, GuardBee sends current synthetic incident facts, deterministic analysis, and retrieved policies to the configured Nebius endpoint. Success or failure feedback appears in the investigation view; a report must cite current `EVT-*` IDs and retrieved `POL-*` IDs. Missing credentials, provider failures, malformed output, no policy match, or citation failure keep the report invalid and approval disabled.
 
 ## 5. Response and Audit
 
-One validated report can receive either Approve simulated response or Reject recommendation. The app persists a simulated audit event in SQLite (unique per report ID), hydrates history on startup, and disables both controls for that report. A new AI analysis creates a new report ID; selecting a different incident invalidates the active report.
+One validated report can receive either Approve simulated response or Reject recommendation. The app persists a simulated audit event in local SQLite at `data/audit.db` (unique per report ID), hydrates history on startup, and disables both controls for that report. **Audit History** shows evidence IDs, policy IDs, and report context when recorded. A new AI analysis creates a new report ID; selecting a different incident invalidates the active report.
 
 The application performs no real remediation. See [workflow diagram](diagrams/workflow.mmd).

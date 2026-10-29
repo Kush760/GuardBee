@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from audit_store import (
     AuditStoreError,
     get_decision_by_report_id,
+    initialize_database,
     list_decisions,
     save_decision,
 )
@@ -41,7 +44,26 @@ class TestAuditStore(unittest.TestCase):
         self.db_path = Path(self._tmpdir.name) / "audit.db"
 
     def tearDown(self):
-        self._tmpdir.cleanup()
+        # Windows can briefly keep the SQLite file locked after the last close.
+        try:
+            self._tmpdir.cleanup()
+        except PermissionError:
+            pass
+
+    def test_initialize_database_creates_schema_before_any_record_is_saved(self):
+        initialize_database(path=self.db_path)
+        self.assertTrue(self.db_path.is_file())
+        connection = sqlite3.connect(self.db_path)
+        try:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table';"
+                )
+            }
+        finally:
+            connection.close()
+        self.assertIn("audit_decisions", tables)
 
     def test_save_and_reload_survives_new_connection(self):
         saved = save_decision(_sample_record(), path=self.db_path)
@@ -57,13 +79,22 @@ class TestAuditStore(unittest.TestCase):
         self.assertEqual(list_decisions(path=self.db_path), [reloaded])
 
     def test_one_decision_per_report_id(self):
-        save_decision(_sample_record("report-1"), path=self.db_path)
+        original = save_decision(_sample_record("report-1"), path=self.db_path)
         with self.assertRaises(AuditStoreError):
             save_decision(
                 _sample_record("report-1", decision="REJECTED", outcome="no"),
                 path=self.db_path,
             )
-        self.assertEqual(len(list_decisions(path=self.db_path)), 1)
+        decisions = list_decisions(path=self.db_path)
+        self.assertEqual(decisions, [original])
+        self.assertEqual(decisions[0]["decision"], "APPROVED")
+
+    def test_sqlite_operational_error_is_reported_without_exposing_database_details(self):
+        with patch("audit_store.sqlite3.connect", side_effect=sqlite3.OperationalError("locked")):
+            with self.assertRaisesRegex(
+                AuditStoreError, "Unable to initialize the local audit database"
+            ):
+                initialize_database(path=self.db_path)
 
     def test_refuses_secret_bearing_fields(self):
         with self.assertRaises(AuditStoreError):

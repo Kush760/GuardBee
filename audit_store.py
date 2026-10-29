@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 # Default on-disk path; override with GUARDBEE_AUDIT_DB for tests or demos.
 _DEFAULT_DB = Path(__file__).resolve().parent / "data" / "audit.db"
@@ -41,11 +42,31 @@ def default_db_path() -> Path:
 def _connect(path: Path | None = None) -> sqlite3.Connection:
     db_path = path or default_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(str(db_path))
+    connection = sqlite3.connect(str(db_path), timeout=30.0)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON;")
+    connection.execute("PRAGMA busy_timeout = 30000;")
     connection.executescript(_SCHEMA)
     return connection
+
+
+@contextmanager
+def _connection(path: Path | None = None) -> Iterator[sqlite3.Connection]:
+    """Open, initialize, and always close a local audit database connection."""
+    try:
+        connection = _connect(path)
+    except (OSError, sqlite3.Error) as exc:
+        raise AuditStoreError("Unable to initialize the local audit database.") from exc
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
+def initialize_database(path: Path | None = None) -> None:
+    """Create the SQLite database and audit schema when they do not yet exist."""
+    with _connection(path):
+        pass
 
 
 def _row_to_record(row: sqlite3.Row) -> dict[str, Any]:
@@ -69,19 +90,25 @@ def get_decision_by_report_id(
 ) -> dict[str, Any] | None:
     if not report_id:
         return None
-    with _connect(path) as connection:
-        row = connection.execute(
-            "SELECT * FROM audit_decisions WHERE report_id = ? LIMIT 1;",
-            (report_id,),
-        ).fetchone()
+    try:
+        with _connection(path) as connection:
+            row = connection.execute(
+                "SELECT * FROM audit_decisions WHERE report_id = ? LIMIT 1;",
+                (report_id,),
+            ).fetchone()
+    except sqlite3.Error as exc:
+        raise AuditStoreError("Unable to read the local audit database.") from exc
     return _row_to_record(row) if row else None
 
 
 def list_decisions(path: Path | None = None) -> list[dict[str, Any]]:
-    with _connect(path) as connection:
-        rows = connection.execute(
-            "SELECT * FROM audit_decisions ORDER BY id ASC;"
-        ).fetchall()
+    try:
+        with _connection(path) as connection:
+            rows = connection.execute(
+                "SELECT * FROM audit_decisions ORDER BY id ASC;"
+            ).fetchall()
+    except sqlite3.Error as exc:
+        raise AuditStoreError("Unable to read the local audit database.") from exc
     return [_row_to_record(row) for row in rows]
 
 
@@ -90,11 +117,6 @@ def save_decision(record: dict[str, Any], path: Path | None = None) -> dict[str,
     report_id = record.get("report_id")
     if not report_id:
         raise AuditStoreError("Audit record requires report_id.")
-    if get_decision_by_report_id(str(report_id), path=path):
-        raise AuditStoreError(
-            f"A decision is already persisted for report_id={report_id!r}."
-        )
-
     evidence_ids = list(record.get("evidence_ids") or [])
     policy_ids = list(record.get("policy_ids") or [])
     # Defense: never persist credential-like keys if a caller adds them by mistake.
@@ -116,23 +138,28 @@ def save_decision(record: dict[str, Any], path: Path | None = None) -> dict[str,
         record.get("status", "RECORDED"),
     )
     try:
-        with _connect(path) as connection:
-            connection.execute(
-                """
-                INSERT INTO audit_decisions (
-                    time_utc, incident_id, actor, decision, outcome, simulation_only,
-                    report_id, report_context_id, evidence_ids, policy_ids, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                """,
-                payload,
-            )
-            connection.commit()
+        with _connection(path) as connection:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO audit_decisions (
+                        time_utc, incident_id, actor, decision, outcome, simulation_only,
+                        report_id, report_context_id, evidence_ids, policy_ids, status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    payload,
+                )
+            row = connection.execute(
+                "SELECT * FROM audit_decisions WHERE report_id = ? LIMIT 1;",
+                (str(report_id),),
+            ).fetchone()
     except sqlite3.IntegrityError as exc:
         raise AuditStoreError(
             f"A decision is already persisted for report_id={report_id!r}."
         ) from exc
+    except sqlite3.Error as exc:
+        raise AuditStoreError("Unable to write the local audit database.") from exc
 
-    stored = get_decision_by_report_id(str(report_id), path=path)
-    if stored is None:
+    if row is None:
         raise AuditStoreError("Persisted audit row could not be re-read.")
-    return stored
+    return _row_to_record(row)

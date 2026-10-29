@@ -8,7 +8,7 @@ The current root codebase is verified with unittest discovery from the repositor
 python -m unittest discover -s tests -v
 ```
 
-Latest CH-07 verification in this environment: **80 tests passed**. Re-run before treating any older count or duration as current. CI uses the same discovery command (Python 3.11 in `.github/workflows/ci.yml`).
+Latest verification in this environment after UI integration: **100 tests passed** (`python -m unittest discover -s tests -v`). Re-run before treating any older count or duration as current. CI uses the same discovery command (Python 3.11 in `.github/workflows/ci.yml`).
 
 ## Test modules (current)
 
@@ -22,6 +22,7 @@ Latest CH-07 verification in this environment: **80 tests passed**. Re-run befor
 | `tests/test_audit_store.py` | SQLite save/reload, uniqueness, secret refusal |
 | `tests/test_scenario_fixtures.py` | Scenario corpus expectations (incl. INC-1014 Option B) |
 | `tests/test_ui_presentation.py` | Classification/severity presentation helpers |
+| `tests/test_app_ui.py` | Headless Streamlit pages, citation lock, SQLite audit history UI |
 
 Exact method names evolve with the suite; discovery is authoritative.
 

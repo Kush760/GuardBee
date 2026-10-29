@@ -55,6 +55,14 @@ def _normalize_citation_text(report: str) -> str:
     return report.translate(_CITATION_DASH_TRANSLATION)
 
 
+def extract_citation_ids(report: str) -> tuple[list[str], list[str]]:
+    """Return well-formed cited EVT-* / POL-* IDs for UI display (order preserved)."""
+    normalized = _normalize_citation_text(report)
+    events = list(dict.fromkeys(re.findall(r"\bEVT-[A-Za-z0-9]+\b", normalized)))
+    policies = list(dict.fromkeys(re.findall(r"\bPOL-[A-Za-z0-9]+\b", normalized)))
+    return events, policies
+
+
 def configured_model() -> str:
     """Return a local override; exact availability is account-specific."""
     return os.getenv("NEBIUS_MODEL", DEFAULT_MODEL)

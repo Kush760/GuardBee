@@ -42,11 +42,11 @@
 **Why:** MVP Scope v2.2 §6 / §1.11 require audit history across app restart while remaining simulation-only (no real account control).  
 **Consequence:** One row per `report_id`; records hold incident/report references, decision, timestamp, evidence/policy IDs, and status—never secrets. Default path is `data/audit.db` (gitignored); override with `GUARDBEE_AUDIT_DB`. Earlier “session-only audit” language in older docs is obsolete for this requirement.
 
-## ADR-008: Single-page UI for MVP Scope v2.2 §7
+## ADR-008: Streamlit navigation for MVP Scope v2.2 §7
 
-**Decision:** Keep one Streamlit entry (`app.py`) that covers Dashboard, Security Incidents, and Audit History as in-page regions (metrics/filters, Investigate/Policy tabs, Decision & audit tab). Do **not** add `pages/` multipage navigation for the MVP.  
-**Why:** §7 asks to improve those workflow areas and to distinguish classifications and evidence; it does not mandate separate Streamlit routes. ADR-001 already chose a single inspectable app.  
-**Consequence:** Demo and docs refer to the three areas as workflow sections of one composition. Multipage navigation would need an explicit scope change.
+**Decision:** Keep one Streamlit entry (`app.py`) with three `st.Page` views—Dashboard, Security Incidents, and Audit History—via `st.navigation` (not a separate `pages/` package). Backend modules (`engine.py`, `audit_store.py`, citation validation, partitioned loading) remain authoritative; the UI must not weaken those gates.
+**Why:** §7 asks to improve those workflow areas. Native Streamlit navigation improves layout and analyst flow while preserving a single inspectable entrypoint (ADR-001) and SQLite audit persistence (ADR-006).
+**Consequence:** Demo and docs describe Dashboard, Security Incidents, and Audit History as the three navigation views of one `app.py` entrypoint. Backend persistence and citation gates are unchanged.
 
 ## ADR-009: Severity LOW band and investigation priority (no unapproved recalibration)
 
