@@ -1,12 +1,10 @@
 # Contributing
 
-1. Read `AGENTS.md`, relevant architecture/task documents, and current Git status.
-2. Create and activate a virtual environment, then install `requirements.txt`.
-3. Copy the secrets example locally only if live verification is explicitly authorized; never commit the copy.
-4. Create an isolated branch from updated `main`.
-5. Make a focused change within the allowed module boundaries.
-6. Run `python -m unittest discover -s tests -v` before requesting review.
-7. Update documentation and tests for behavior/data changes.
-8. Open a PR with test output, concise rationale, and remaining limitations.
-
-Use conventional, descriptive commit prefixes such as `feat:`, `fix:`, `test:`, `docs:`, or `chore:`. Never include secret values, production logs, or real account identifiers in commits, issues, screenshots, or PR descriptions.
+1. Read `AGENTS.md` and inspect current source before changing behavior.
+2. Create and activate a virtual environment; install `requirements.txt`.
+3. Copy `.streamlit/secrets.toml.example` locally only if live AI verification is authorized; never commit secrets.
+4. Branch from updated `main`; keep changes reviewable.
+5. Do not modify unrelated protected datasets/tests unless the task explicitly requires it.
+6. Run `python -m unittest discover -s tests -v` and report actual results.
+7. Update documentation when behavior changes; keep MVP labeled v2.2.
+8. Leave `docs/archive/` as historical unless intentionally revising history with approval.

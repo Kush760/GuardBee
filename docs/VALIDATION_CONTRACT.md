@@ -1,60 +1,47 @@
-# Incident validation and partition-load contract
+# Validation Contract (MVP v2.2)
 
-**Source of truth:** `docs/MVP_SCOPE_v2.2.md` §1.2 / §4  
-**Implementation:** `data_loader.py`  
-**Primary consumer:** `app.py` (loads incidents for analysis)
+Source: `data_loader.py` as called by `app.py`.
 
-## APIs
+## Input validation
 
-| API | Behavior |
-| --- | --- |
-| `partition_incidents(value)` | Partitions an in-memory JSON array into valid incidents and explicit issues. |
-| `load_incidents_partitioned(path)` | Reads a file, then partitions. |
-| `validate_incidents(value)` | Fail-closed: any issue raises `DataValidationError`. |
-| `load_incidents(path)` | Fail-closed file load using `validate_incidents`. |
+| Loader | Behavior |
+|---|---|
+| `load_incidents(path)` | Read UTF-8 JSON → `validate_incidents` → **fail-closed** |
+| `load_policies(path)` | Read UTF-8 JSON → `validate_policies` → fail-closed |
+| `load_incidents_partitioned(path)` | Returns `IncidentPartitionResult(valid, issues)` | **Not used by `app.py`** |
 
-## Result type
+Missing file / unreadable path / invalid JSON → `DataValidationError`.
 
-`IncidentPartitionResult`:
+## Required incident fields
 
-- `valid`: list of schema-valid incident dicts (safe for `engine.analyze_incident`)
-- `issues`: list of `IncidentValidationIssue(index, message, incident_id | None)`
-- `errors`: derived list of human-readable strings (`issue.as_text()`)
-- Unpacks as `(valid, errors)` for compatibility
+Incident: `id`, `title`, `account`, `department`, `known_ips` (non-empty strings list), `events` (non-empty).
 
-Every rejected record produces exactly one issue. Records are never silently dropped.
+Each event: `id`, `time_utc` (ISO-8601), `type` ∈ {`login_failed`,`login_success`}, `ip`, `country` (all non-empty strings).
 
-## File-level hard failures (`DataValidationError`)
+## Required policy fields
 
-These are **not** per-record issues:
+`id`, `title`, `text` (non-empty strings). Optionals must match documented types when present.
 
-| Input | Result |
-| --- | --- |
-| Missing / unreadable file | `DataValidationError` (“Could not read…”) |
-| Malformed JSON | `DataValidationError` (“not valid JSON”) |
-| Root not a non-empty array | `DataValidationError` (“non-empty JSON array”) |
+## Type constraints
 
-## Per-record issues (partition path)
+- Root collections must be non-empty JSON arrays.
+- Duplicate incident ids among valid rows: partitioned loader reports and keeps first; fail-closed loader raises.
+- Duplicate event ids within an incident → error.
+- Duplicate policy ids → error.
+- Empty string `ip` is explicitly invalid (must not be treated as an unfamiliar address).
+- Optional enrichment such as incident `home_country` / `home_city` or event `city` is **not** type-checked by the current loader when present (including blank strings).
 
-Reported with array index and `incident_id` when available:
+## Duplicate handling
 
-- Missing/invalid required incident fields (`id`, `title`, `account`, `department`)
-- Invalid `known_ips`
-- Empty/missing events; invalid event fields
-- Invalid event `type` (must be `login_failed` / `login_success`)
-- Invalid `time_utc`
-- Empty/missing event `ip` (must not be treated as unfamiliar)
-- Duplicate event IDs within an incident
-- Duplicate incident IDs (first kept; later duplicates reported)
+- `validate_incidents` / `load_incidents`: any issue (including duplicates) raises with joined messages.
+- `partition_incidents`: invalid or duplicate rows become explicit `IncidentValidationIssue` entries; valid list excludes them.
 
-## Consumer rules
+## Fail-closed UI behavior
 
-1. Call `load_incidents_partitioned` (or `partition_incidents`) when partial processing is allowed.
-2. Surface `result.errors` / `result.issues` as **data-quality / validation** messages — never as NORMAL/SUSPICIOUS security findings.
-3. Pass **only** `result.valid` to `analyze_incident`.
-4. If `valid` is empty after partition, stop analysis and require data repair.
-5. Callers that need all-or-nothing semantics must keep using `load_incidents` / `validate_incidents`.
+`app.py` catches `DataValidationError`, shows an error that data could not load safely, captions the validation message, and calls `st.stop()`. It does **not** partially render valid incidents from a mixed invalid file.
 
-## UI integration note
+## Error handling elsewhere
 
-`app.py` already uses `load_incidents_partitioned`, shows validation captions for excluded records, and analyzes only `valid` incidents. Further presentation polish (dedicated Audit/Validation panels) remains UI-owned.
+- Retrieval argument errors → `TypeError` / `ValueError`.
+- AI failures → `AIReportError` with provider-safe messages (no API key echo).
+- Audit module failures → `AuditStoreError` (UI path unused).

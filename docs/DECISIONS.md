@@ -1,61 +1,22 @@
-# Architecture Decisions
+# Architectural Decisions (MVP v2.2)
 
-## ADR-001: Python and Streamlit
+Verified against the current local modules. No fabricated ADR owners or dates.
 
-**Decision:** Use one Python Streamlit app.  
-**Why:** The MVP needs a fast, inspectable dashboard without a separate frontend/backend.  
-**Consequence:** UI and session state live in `app.py`; this is not a multi-user production architecture.
+## Verified decisions (current code)
 
-## ADR-002: Deterministic risk before AI
+| Decision | Choice | Evidence |
+|---|---|---|
+| UI framework | Streamlit multipage via `st.navigation` | `app.py` |
+| Risk vs AI | Deterministic engine owns classification; AI explains | `engine.py`, `ai_client.py`, `app.py` |
+| Policy search | Local TF-IDF + cosine; threshold 0.08; top_k 3 | `retrieval.py` |
+| AI provider | Nebius Token Factory / Nemotron via OpenAI client | `ai_client.py` |
+| Citation gate | Reject malformed/unknown IDs; require ≥1 EVT and ≥1 POL (no compromise-phrase regex) | `validate_report_citations` |
+| Decision lock | One decision per validated report/context | `workflow.py` + `app.py` |
+| Incident load in UI | Fail-closed `load_incidents` | `app.py`, `data_loader.py` |
+| Audit in UI | Session list only | `app.py` (`session_state.audit`) |
+| SQLite audit | Implemented as standalone module | `audit_store.py` (unused by UI) |
+| Simulation boundary | Approve/Reject never call external remediation | `build_decision_record`, UI copy |
 
-**Decision:** Calculate risk in `engine.py` before any optional model request.  
-**Why:** Scores, severity, and evidence must be repeatable and explainable.  
-**Consequence:** AI explains supplied evidence but does not establish detection facts.
+## Historical / superseded notes
 
-## ADR-003: Local TF-IDF retrieval
-
-**Decision:** Use scikit-learn TF-IDF with `0.08` minimum similarity.  
-**Why:** It is lightweight and tested against the bundled policy corpus.  
-**Consequence:** No policy match blocks AI analysis rather than presenting arbitrary passages as relevant.
-
-## ADR-004: Citation gate and unsupported-claim guardrails
-
-**Decision:** Require current `EVT-*` and retrieved `POL-*` IDs before enabling a decision, and reject reports that claim confirmed compromise (or treat unfamiliar IP alone as proof of malice). Prompt grounding must include deterministic classification, score, severity, priority, rules, and evidence.  
-**Why:** It prevents a citation-free, stale, fabricated, or over-certain report from authorizing a simulation.  
-**Consequence:** Membership and lightweight certainty checks are necessary guardrails, not full semantic fact-checking.
-
-## ADR-007: Deduplicate GB-RULE-003 by shared failure evidence
-
-**Decision:** Score at most one `GB-RULE-003` contribution per distinct failure-evidence set; additional successes that reuse the same prior failures append evidence IDs without adding points. Distinct failure sets (independent patterns) may each contribute.  
-**Why:** MVP Scope v2.2 §3 forbids repeatedly counting the same underlying evidence while still allowing independent signals.  
-**Consequence:** One burst followed by many successes no longer inflates the score; multi-IP independent bursts can still stack up to the cap of 100.
-
-## ADR-005: One decision per report
-
-**Decision:** Bind one decision to a context-fingerprinted report ID.  
-**Why:** Avoid duplicate or conflicting simulations during Streamlit reruns.  
-**Consequence:** Reanalysis is required for another decision.
-
-## ADR-006: Simulated decisions with SQLite audit (supersedes session-only)
-
-**Decision:** Persist simulated Approve/Reject decisions in a local SQLite file via stdlib `sqlite3` (`audit_store.py`). Session state still mirrors the store for the active UI.  
-**Why:** MVP Scope v2.2 §6 / §1.11 require audit history across app restart while remaining simulation-only (no real account control).  
-**Consequence:** One row per `report_id`; records hold incident/report references, decision, timestamp, evidence/policy IDs, and status—never secrets. Default path is `data/audit.db` (gitignored); override with `GUARDBEE_AUDIT_DB`. Earlier “session-only audit” language in older docs is obsolete for this requirement.
-
-## ADR-008: Streamlit navigation for MVP Scope v2.2 §7
-
-**Decision:** Keep one Streamlit entry (`app.py`) with three `st.Page` views—Dashboard, Security Incidents, and Audit History—via `st.navigation` (not a separate `pages/` package). Backend modules (`engine.py`, `audit_store.py`, citation validation, partitioned loading) remain authoritative; the UI must not weaken those gates.
-**Why:** §7 asks to improve those workflow areas. Native Streamlit navigation improves layout and analyst flow while preserving a single inspectable entrypoint (ADR-001) and SQLite audit persistence (ADR-006).
-**Consequence:** Demo and docs describe Dashboard, Security Incidents, and Audit History as the three navigation views of one `app.py` entrypoint. Backend persistence and citation gates are unchanged.
-
-## ADR-009: Severity LOW band and investigation priority (no unapproved recalibration)
-
-**Decision:** Retain the coded severity thresholds (HIGH ≥ 70, MEDIUM 30–69, LOW &lt; 30 for `SUSPICIOUS` only) and map `investigation_priority` from classification and severity. Do **not** change rule point values or add department/asset score or priority bonuses without an approved requirement plus regression tests.  
-**Why:** Scope §3 lists the LOW band as a baseline to retain and test, and allows calibration only when evidence supports a change. Current positive rule points for suspicious patterns are 25–40 (and bursts add 30), so representative `SUSPICIOUS` cases land in MEDIUM or HIGH; LOW remains implemented for scores below 30. Scope mentions asset criticality as a priority consideration; the MVP shows `department` as analyst context and deliberately removed Finance score inflation, so priority stays classification/severity-derived.  
-**Consequence:** Docs and demos must not claim that every severity band appears in the current corpus. Changing points or adding criticality weighting is out of band until explicitly approved.
-
-## ADR-010: INC-1014 proposal classification vs engine (≥3 failure threshold)
-
-**Decision:** Keep `INC-1014` expected classification as `INSUFFICIENT_EVIDENCE` under coded rules (CH-03 Option B). Do not invent a third failure, and do not lower `GB-RULE-001` / `GB-RULE-003` thresholds (≥3 qualifying failures) merely to match proposal `test_metadata`.  
-**Why:** The authoritative payload has only two failures before an unfamiliar-IP success. After chronological sort, RULE-002 applies (0 points). Proposal metadata expected `SUSPICIOUS`, but that expectation is unsupported by the event count under approved rules. Chronology remains independently tested (fixture + stronger 3-failure unit case).  
-**Consequence:** `tests/fixtures/scenario_expectations.json` and `docs/SCENARIO_COVERAGE_MATRIX.md` document the deviation; engine thresholds stay unchanged.
+Older docs and archived reports described SQLite-backed Audit History and partitioned incident loading in the UI. Those match **published** patterns on some commits and the standalone APIs, but **not** the current local `app.py` integration. Keep archival copies under `docs/archive/`; do not treat them as current behavior.

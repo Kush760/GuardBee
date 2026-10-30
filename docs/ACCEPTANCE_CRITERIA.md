@@ -1,23 +1,23 @@
-# Acceptance Criteria
+# Acceptance Criteria (MVP v2.2)
 
-## MVP definition of done
+## Definition of done (implementation-backed)
 
-- [x] Synthetic incidents and policies load only after validation.
-- [x] Deterministic risk and evidence are visible before AI.
-- [x] TF-IDF retrieval has a tested threshold and explicit no-match state.
-- [x] Citation membership and report-context gates protect decisions.
-- [x] One simulation-only decision is recorded per valid report and persisted in local SQLite.
-- [x] Unit test suite contains 100 current tests (`python -m unittest discover -s tests -v`).
-- [ ] Browser workflow is manually checked in the target environment.
-- [ ] Live Nebius/NVIDIA model request is verified with authorized credentials.
-- [ ] Public deployment, demo video, and submission materials are verified.
+- [x] Synthetic incidents and policies load only after validation (`load_incidents` / `load_policies`).
+- [x] Invalid data fails closed in the UI (`DataValidationError` → stop).
+- [x] Deterministic risk and evidence are visible before AI (`engine.py` via investigation tabs).
+- [x] Policy passages retrieved locally with TF-IDF threshold (`retrieval.py`).
+- [x] AI reports are optional, live-only, and citation-gated (`ai_client.py`).
+- [x] Simulated Approve/Reject require a current validated report (`workflow.py` + `app.py`).
+- [x] Audit History lists session decisions and states simulation-only / session storage limits.
+- [x] Secrets example tracked; real `secrets.toml` gitignored.
+- [x] CI workflow installs deps, validates JSON loaders, runs unittest discovery.
 
-## Workstream sign-off
+## Explicit non-goals (must remain false)
 
-| Workstream | Sign-off evidence |
-| --- | --- |
-| A | CI run, review record, protected-main settings, integration test output. |
-| B | Synthetic screenshots and browser checklist. |
-| C | Validated JSON, tests for new scenarios, synthetic-data statement. |
-| D | Retrieval tests plus non-secret evidence of any authorized live verification. |
-| E | Test record, demo script/video, deployment/submission checklist. |
+- [ ] Real account containment or session revocation
+- [ ] Silent fabrication of AI reports on provider failure
+- [ ] Claiming SQLite UI persistence while `app.py` does not call `audit_store`
+
+## Verification reminders
+
+Checkboxes above describe **code presence**, not a claim that unittest or live Nebius checks were re-run in the latest docs pass. Record fresh test evidence in submission notes.

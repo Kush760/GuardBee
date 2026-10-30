@@ -1,57 +1,63 @@
-# GuardBee Testing and Submission Guide
+# Testing and Submission (MVP v2.2)
 
-## Automated tests
+## Automated test command
 
-The CI workflow and agent completion gate use the unittest discovery command. From the project root (after installing `requirements.txt`):
+From the repository root (after `pip install -r requirements.txt`):
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-On Windows with the Python launcher you may use `py -m unittest discover -s tests -v`.
+CI (`.github/workflows/ci.yml`) runs the same discovery on Python 3.11, plus `load_incidents` / `load_policies` on `data/*.json`, and asserts secrets.toml is untracked.
 
-The tests are offline. They use synthetic JSON and mock the provider client, so they do not require a Nebius key, internet access, or a live model.
+**Do not treat older pass counts in archived reports as current.** Re-run locally and record the observed result before submission claims.
 
-`pytest` remains listed in `requirements.txt` as an optional runner. If you prefer pytest, target the `tests/` package only so sibling folders are not collected:
+## Test categories (modules present)
 
-```bash
-python -m pytest tests -v
-```
+| Module | Focus |
+|---|---|
+| `test_engine.py` | Deterministic analysis |
+| `test_data_loader.py` | Validation / partition APIs |
+| `test_retrieval.py` | TF-IDF behavior |
+| `test_ai_client.py` | Citations / mocked provider |
+| `test_workflow.py` | Decision gates |
+| `test_audit_store.py` | SQLite module behavior |
+| `test_scenario_fixtures.py` | Fixture expectations |
+| `test_ui_presentation.py` | Presentation helpers |
+| `test_app_ui.py` | Headless Streamlit flows |
 
-Do not rely on a bare `pytest` invocation from a parent directory that also contains another copy of the suite (for example a nested recovery tree).
+Strategy (consolidated from former TEST_PLAN): offline unit tests and mocks only; tests must not require a real API key or network.
 
-Coverage includes:
+## Configuration checks
 
-- high and medium deterministic severity outcomes, score boundaries, and the coded LOW band for `SUSPICIOUS` scores below 30 (current rule points typically yield MEDIUM or HIGH when suspicious);
-- valid, malformed, incomplete, missing, and empty data cases, including partitioned valid/invalid handling;
-- relevant, no-match, empty-query, and threshold-excluded TF-IDF retrieval;
-- missing credentials, mocked provider exceptions, and malformed provider responses;
-- accepted, missing, fabricated, stale, and unretrieved citation IDs (including Unicode-dash normalization);
-- duplicate/conflicting decision prevention, new-analysis behavior, and stale-context rejection;
-- SQLite audit save/reload across a new connection (simulating app restart) and refusal of secret-bearing fields.
+- `.streamlit/secrets.toml` exists locally only if needed; never commit it.
+- Example secrets file remains tracked without real keys.
+- Optional: `NEBIUS_BASE_URL`, `NEBIUS_MODEL` for account-specific endpoints.
 
-## Manual verification still required
+## Application verification (manual)
 
-Automated tests do not prove the browser workflow or a live provider integration. Before a demonstration or deployment, verify manually:
+Observe, do not invent:
 
-1. Create a local `.streamlit/secrets.toml` from the example without committing it.
-2. Confirm the configured Nemotron model is available to the Nebius account and that the account has usable access and quota.
-3. Start the application with `streamlit run app.py`.
-4. Review each synthetic incident, its timeline, score, evidence IDs, and displayed policy matches.
-5. Request one live report and confirm it cites only IDs shown for the selected incident and retrieved policies.
-6. Confirm Approve and Reject are unavailable before a valid report, permit one decision after a valid report, and relock after it.
-7. Confirm the audit entry says simulation-only and that no real account or system changed.
-8. Refresh the browser or stop and restart `streamlit run app.py`, then confirm the same simulated decision still appears in **Decision & audit** / audit history (SQLite persistence via `audit_store.py`, default `data/audit.db`, overridable with `GUARDBEE_AUDIT_DB`). History must not disappear merely because the Streamlit session restarted.
+1. App starts and Dashboard renders with loaded incidents.
+2. Investigation tabs populate from engine + retrieval.
+3. Missing key → AI error path without fabricated report.
+4. With authorized key: one live report; citation gate behavior.
+5. Approve/Reject lock/unlock rules.
+6. Audit History shows session records; restart clears them (current UI).
 
-## Submission readiness checklist
+## Submission preparation
 
-Before publishing or submitting, confirm the following facts rather than claiming them in advance:
+- Confirm MVP labeled **v2.2**.
+- README + QUICKSTART runnable by a judge.
+- Scope exclusions clear (no real containment).
+- Historical materials under `docs/archive/` if needed for evidence, not as current architecture truth.
+- Re-run unittest and paste **actual** output into your submission notes.
 
-- The public repository contains source, tests, documentation, license, and no credential files.
-- A deployment URL exists and is tested from a separate browser or device.
-- The live Nebius/NVIDIA flow has been exercised with a permitted account and model.
-- The demo clearly identifies all data and outcomes as synthetic and simulated.
-- README setup steps work from a clean environment.
-- A short demonstration shows the complete analyst workflow and states that simulated audit rows persist in local SQLite across restart (still simulation-only; no real account changes).
+## Honest verification status
 
-This repository does not create a release archive or deployment automatically. Produce any final ZIP only after these checks are complete.
+| Check | Status in this documentation pass |
+|---|---|
+| Docs rewritten to match disk seven modules + `app.py` wiring | Done |
+| Unittest suite executed in this pass | **Not run** (protected test tree; no invented PASS) |
+| Live Nebius verification | **Not claimed** |
+| Browser demo verification | **Not claimed** |

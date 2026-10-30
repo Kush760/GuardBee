@@ -5,9 +5,10 @@ flowchart LR
   Loader --> Policies[(data/policies.json)]
   UI --> Engine[engine.py / deterministic risk]
   UI --> Retrieval[retrieval.py / TF-IDF]
-  Engine --> Context[workflow.py / context and decision gate]
-  Retrieval --> Context
   UI --> AI[ai_client.py]
   AI -. optional live request .-> Nebius[Nebius Token Factory / NVIDIA Nemotron]
-  Context --> Audit[audit_store.py]
-  Audit --> DB[(SQLite audit.db)]
+  Engine --> WF[workflow.py / context and decision gate]
+  Retrieval --> WF
+  UI --> WF
+  WF --> SessionAudit[st.session_state.audit]
+  AuditMod[audit_store.py] -.->|standalone module not imported by app.py| DB[(SQLite data/audit.db)]

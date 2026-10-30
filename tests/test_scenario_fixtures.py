@@ -95,7 +95,9 @@ class TestScenarioFixtures(unittest.TestCase):
             for hit in result["rule_hits"]
             if hit["rule_id"] == "GB-RULE-001"
         )
-        self.assertEqual(failure_point_total, 30)
+        # Dynamic scoring: 5 points per failure in the densest burst (INC-1010 has 3 → 15), capped at 30.
+        self.assertEqual(failure_point_total, 15)
+        self.assertLessEqual(failure_point_total, 30)
 
     def test_incomplete_ip_loader_and_engine(self):
         incomplete = json.loads(

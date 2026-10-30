@@ -1,73 +1,86 @@
-# Data Model
+# Data Model (MVP v2.2)
 
-## Incident collection
+## Incident JSON (`data/incidents.json`)
 
-`data/incidents.json` is a non-empty array. Each incident contains:
+Root: non-empty JSON **array**.
 
-```json
-{
-  "id": "INC-1001",
-  "title": "string",
-  "account": "synthetic-account@example.test",
-  "department": "string",
-  "known_ips": ["203.0.113.10"],
-  "events": [
-    {
-      "id": "EVT-001",
-      "time_utc": "2026-10-17T08:00:00Z",
-      "type": "login_success",
-      "ip": "203.0.113.10",
-      "country": "string"
-    }
-  ]
-}
-```
+### Incident object (required)
 
-IDs are strings and unique per collection; event IDs are unique within an incident. Event type is `login_failed` or `login_success`, and timestamps must be ISO-8601. Event `ip` must be a non-empty string; an empty IP is invalid and must not be interpreted as an unfamiliar address. The bundled examples use RFC 5737 documentation ranges such as `198.51.100.x` and `203.0.113.x`. The validator does not enforce an IP-range restriction, so any future data contributor must preserve the synthetic-data policy.
+| Field | Type | Notes |
+|---|---|---|
+| `id` | non-empty string | Unique across file |
+| `title` | non-empty string | |
+| `account` | non-empty string | Synthetic account label |
+| `department` | non-empty string | |
+| `known_ips` | array of non-empty strings | Baseline familiar addresses |
+| `events` | non-empty array | See below |
 
-`validate_incidents` / `load_incidents` remain fail-closed (all-or-nothing). Callers that must process valid rows while reporting invalid ones use `partition_incidents` / `load_incidents_partitioned`, which return `IncidentPartitionResult` (`valid` + structured `issues`) and never silently discard invalid records. `app.py` consumes the partitioned path and analyzes only `valid` incidents. See `docs/VALIDATION_CONTRACT.md`. Expected classifications and other test-only metadata must not be stored in production `data/incidents.json`.
+### Optional incident enrichment (used by engine/UI when present)
 
-Scenario expectations for MVP coverage live under `tests/fixtures/` (`scenario_incidents.json`, `scenario_expectations.json`, `incomplete_ip_incident.json`). See `docs/SCENARIO_COVERAGE_MATRIX.md`. Extra proposal fields such as `test_metadata`, `scenario_context`, and `evidence_context` are not part of the production schema.
+| Field | Usage |
+|---|---|
+| `home_country` / `home_city` | Home context for country rules and display |
 
-## Policy collection
+### Event object (required fields)
 
-`data/policies.json` is a non-empty array. Each `POL-*` record requires unique non-empty `id`, `title`, and `text`. Optional MVP enrichment fields (Scope §5) may also be present:
+| Field | Type | Notes |
+|---|---|---|
+| `id` | non-empty string | Unique within incident; cited as EVT-* |
+| `time_utc` | ISO-8601 string | Parsed with `Z` → UTC |
+| `type` | `login_failed` or `login_success` | |
+| `ip` | non-empty string | Empty IP is invalid |
+| `country` | non-empty string | |
 
-- `description` (string)
-- `categories` (array of non-empty strings)
-- `conditions` (string)
-- `investigation_guidance` (string)
+Optional display fields such as `city` may appear; validation does not require them.
 
-Missing optional fields are allowed; invalid types for present optionals are rejected. `retrieval.py` includes optional fields in TF-IDF search text when present and adds a transient `match_score` only to in-memory retrieved records.
+## Policy JSON (`data/policies.json`)
 
-## Deterministic assessment output
+Root: non-empty array. Unique `id` values.
 
-`analyze_incident` returns:
+| Field | Required | Notes |
+|---|---|---|
+| `id` | yes | Cited as POL-* |
+| `title` | yes | Included in TF-IDF corpus |
+| `text` | yes | Included in TF-IDF corpus |
+| `description` | no | Validated if present; **not** in current retrieval corpus |
+| `categories` | no | Array of non-empty strings if present |
+| `conditions` | no | Non-empty string if present |
+| `investigation_guidance` | no | Shown in UI when present |
 
-- `classification`: `NORMAL`, `SUSPICIOUS`, or `INSUFFICIENT_EVIDENCE`
-- `risk_score`: integer 0–100 (capped); not proof of account compromise
-- `severity`: `HIGH` / `MEDIUM` / `LOW` only when classification is `SUSPICIOUS`; otherwise `null` (normal activity never receives `LOW` merely for a zero score)
-- `investigation_priority`: `NONE` / `LOW` / `MEDIUM` / `HIGH`
-- `rule_hits`, `flags`, `evidence_ids`, `suggested_action`
+Retrieval return objects add `match_score` (float).
 
-Each rule hit includes `rule_id`, text flag, point value, and its direct evidence IDs. Events are evaluated in chronological timestamp order. Failure bursts use a configurable window (default 30 minutes).
-
-## Simulated audit record (SQLite)
-
-An approved or rejected simulation creates a durable record persisted by `audit_store.py` (default `data/audit.db`, override `GUARDBEE_AUDIT_DB`). Fields:
+## Analysis output (`analyze_incident`)
 
 | Field | Meaning |
-| --- | --- |
-| `time_utc` | Decision timestamp (ISO-8601 UTC) |
-| `incident_id` | Synthetic incident under review |
-| `actor` | Demo actor (`demo-analyst`) |
-| `decision` | `APPROVED` or `REJECTED` |
-| `outcome` | Human-readable simulation outcome text |
-| `simulation_only` | Always true for MVP |
-| `report_id` | Validated AI report ID (unique; one decision) |
-| `report_context_id` | Evidence/policy context fingerprint at decision time |
-| `evidence_ids` | Event IDs referenced by the deterministic analysis |
-| `policy_ids` | Retrieved policy IDs shown for that analysis |
-| `status` | Persistence status (`RECORDED`) |
+|---|---|
+| `risk_score` | int 0–100 |
+| `severity` | CRITICAL/HIGH/MEDIUM/LOW or `None` |
+| `classification` | NORMAL / SUSPICIOUS / INSUFFICIENT_EVIDENCE |
+| `investigation_priority` | NONE / LOW / MEDIUM / HIGH |
+| `rule_hits` | list of `{rule_id, flag, points, evidence_ids}` |
+| `flags` | human-readable flag strings |
+| `evidence_ids` | deduped event ids from hits |
+| `suggested_action` | simulated recommendation text |
 
-Secrets (`api_key`, tokens, passwords) must never appear on audit rows. Streamlit session state mirrors the store for display after hydrate on startup.
+## Decision record (`build_decision_record`)
+
+| Field | Notes |
+|---|---|
+| `time_utc` | ISO timestamp |
+| `incident_id` | |
+| `actor` | default `demo-analyst` |
+| `decision` | APPROVED / REJECTED |
+| `outcome` | human-readable simulation text |
+| `simulation_only` | always True for UI path |
+| `report_id` | ties to validated report |
+| `report_context_id` | fingerprint |
+| `evidence_ids` / `policy_ids` | lists |
+| `status` | `RECORDED` |
+
+## SQLite schema (`audit_store.py` only)
+
+Table `audit_decisions`: columns mirroring the decision record (`evidence_ids` / `policy_ids` stored as JSON text; `simulation_only` as integer; unique `report_id`). Used when callers invoke `save_decision` / `list_decisions`; **current `app.py` does not**.
+
+## Validation boundaries
+
+See [VALIDATION_CONTRACT.md](VALIDATION_CONTRACT.md). File-level failures and (for `load_incidents`) any per-record issue abort loading in the UI.

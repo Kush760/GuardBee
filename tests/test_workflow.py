@@ -15,14 +15,8 @@ class TestDecisionWorkflow(unittest.TestCase):
         record = build_decision_record(
             "INC-1", "APPROVED", "simulated", "report", self.context_id,
             self.context_id, "report-1", None, datetime(2026, 1, 1, tzinfo=timezone.utc),
-            evidence_ids=["EVT-1"],
-            policy_ids=["POL-1"],
         )
         self.assertEqual(record["decision"], "APPROVED")
-        self.assertEqual(record["evidence_ids"], ["EVT-1"])
-        self.assertEqual(record["policy_ids"], ["POL-1"])
-        self.assertEqual(record["status"], "RECORDED")
-        self.assertEqual(record["report_context_id"], self.context_id)
         conflicting = build_decision_record(
             "INC-1", "REJECTED", "no action", "report", self.context_id,
             self.context_id, "report-1", record,

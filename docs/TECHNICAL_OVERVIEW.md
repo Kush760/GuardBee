@@ -1,61 +1,62 @@
-# GuardBee Technical Overview
+# Technical Overview (MVP v2.2)
 
-## Architecture
+Implementation reference: local `engine.py`, `retrieval.py`, `ai_client.py`, `workflow.py`, `audit_store.py`, `data_loader.py`, and `app.py`.
 
-GuardBee is one Python Streamlit application. It has no separate backend service, vector database, or real security integration. Simulated audit decisions use local stdlib SQLite (`audit_store.py`).
+## Deterministic risk engine
 
-| Component | Responsibility |
-| --- | --- |
-| `app.py` | Streamlit UI, safe data-load handling, AI request flow, approval controls, and SQLite audit hydrate/display. |
-| `audit_store.py` | Stdlib SQLite persistence for simulated decisions (`GUARDBEE_AUDIT_DB` override). |
-| `data_loader.py` | JSON parsing and validation of incident and policy collections. |
-| `engine.py` | Explainable deterministic risk scoring and evidence collection. |
-| `retrieval.py` | Local scikit-learn TF-IDF policy ranking. |
-| `ai_client.py` | OpenAI-compatible Nebius Token Factory request and report-citation validation. |
-| `workflow.py` | Analysis-context fingerprint and one-decision-per-report gate. |
+`analyze_incident(incident, failure_burst_window_minutes=30)` sorts events chronologically and scores only from event evidence.
 
-## Deterministic risk rules
+Incomplete IP or invalid timestamps → `INSUFFICIENT_EVIDENCE` (score 0).
 
-The rule engine evaluates the selected incident without an AI model. Events are sorted by `time_utc` before sequence checks. Classification (`NORMAL` / `SUSPICIOUS` / `INSUFFICIENT_EVIDENCE`), risk score, severity, and investigation priority are separate fields. A high score is not proof of compromise. Static `known_ips` are limited offline context, not definitive trust.
+| Rule ID | Signal (summary) | Scoring notes |
+|---|---|---|
+| GB-RULE-001 | Failure burst (≥3 in window) | 5 pts/failure, max 30 |
+| GB-RULE-007 | Fast burst rate | Up to 10 |
+| GB-RULE-003 | ≥3 prior failures then success (same IP, windowed) | Up to 25 |
+| GB-RULE-008 | That success from unfamiliar IP | +15 |
+| GB-RULE-002 | Unfamiliar success alone | 0 pts; often INSUFFICIENT |
+| GB-RULE-006 | Many failures, no dense burst | 0 pts informational |
+| GB-RULE-009–013 | Extra unfamiliar IPs, new country, impossible travel, off-hours, known-only dampener | Only when already suspicious |
 
-| Rule | Points | Evidence behavior |
-| --- | ---: | --- |
-| GB-RULE-001: ≥3 failed logins inside the burst window (default 30 minutes) | 30 | Failure event IDs in the densest in-window cluster. |
-| GB-RULE-003: chronological failure burst then success on the same IP | 25 known IP / 40 unfamiliar IP | Prior in-window failures plus success ID(s). One contribution per distinct failure-evidence set; later successes sharing that set append evidence without extra points. Independent failure sets may each contribute. Known IP is not automatic safety. |
-| GB-RULE-002: unfamiliar success without supporting failure evidence | 0 | Informational only → `INSUFFICIENT_EVIDENCE`, not automatic suspicion. |
-| GB-RULE-006: ≥3 failures with no in-window burst | 0 | Longer-term pattern flag, separate from RULE-001. |
+**Classification:** SUSPICIOUS if burst≥3 or fail-then-success sequence; else INSUFFICIENT if any rule hit; else NORMAL.
 
-Finance department no longer adds risk points. Overlapping failure evidence is not re-scored by a separate unfamiliar-success bonus when RULE-003 already covers that success. Scores are capped at 100. Severity bands `HIGH` ≥ 70, `MEDIUM` 30–69, and `LOW` &lt; 30 apply only to `SUSPICIOUS` cases; `NORMAL` and `INSUFFICIENT_EVIDENCE` use `severity: null`. With the current point table, a positive suspicious contribution is at least 25–30 points, so representative `SUSPICIOUS` incidents in the corpus are MEDIUM or HIGH; the LOW band remains coded for scores below 30 and is not removed without an approved recalibration (ADR-009). `investigation_priority` is derived from classification and severity; `department` is displayed as asset/context for the analyst and does not alter score or priority.
+**Severity:** CRITICAL/HIGH/MEDIUM/LOW from score bands **only when SUSPICIOUS**; otherwise `None`.
+
+**Priority:** NONE / LOW / MEDIUM / HIGH from classification + severity.
+
+Risk score is capped at 100 and is **not** proof of compromise.
 
 ## Policy retrieval
 
-`retrieval.py` builds a TF-IDF representation from each policy title, text, and optional enrichment fields (`description`, `categories`, `conditions`, `investigation_guidance`), then ranks against an investigation query with cosine similarity. Retrieval does not affect deterministic risk scores. The default minimum score is `0.08`. In the bundled four-policy corpus this retains the tested login-policy matches while avoiding zero and near-zero overlap. The threshold is a function parameter for future corpus tuning.
+`retrieve_policies(query, policies, top_k=3, min_similarity=0.08)` builds TF-IDF over `title + text`, ranks by cosine similarity, returns copies with `match_score`.
 
-An empty or below-threshold result is an explicit no-match state. The UI does not label unmatched policies as relevant and disables AI analysis because there is no valid policy context to cite.
+`app.py` query = incident title + department + analysis flags + suggested action.
 
-## Data contract
+No match → AI request and decisions stay locked.
 
-Both data files must be non-empty JSON arrays.
+## AI integration
 
-- An incident requires non-empty `id`, `title`, `account`, and `department`; a `known_ips` list of non-empty strings; and at least one event.
-- An event requires non-empty `id`, `time_utc`, `type`, `ip`, and `country`. Timestamps must be ISO-8601, and type must be `login_failed` or `login_success`.
-- A policy requires non-empty `id`, `title`, and `text`; optional `description`, `categories`, `conditions`, and `investigation_guidance` are validated when present.
-- Incident IDs, policy IDs, and IDs within each incident's events must be unique.
+`generate_report(api_key, incident, analysis, policies, …)` posts JSON context to Nebius (OpenAI client). Strips `<think>` blocks and normalizes Unicode dashes inside EVT/POL-looking tokens.
 
-`data_loader.py` raises a controlled validation error for missing files, malformed JSON, or empty collections (file-level failures). Fail-closed helpers (`validate_incidents` / `load_incidents`) reject the whole collection when any record is invalid. `partition_incidents` / `load_incidents_partitioned` return `IncidentPartitionResult` with valid records plus explicit per-record issues (index, message, optional `incident_id`) and never silently drop invalid rows. `app.py` uses the partitioned loader: validation messages are shown as data-quality errors, and only `valid` incidents are passed to `engine.analyze_incident`. Simulated audit history is persisted in local SQLite via `audit_store.py`.
+`validate_report_citations(report, evidence_ids, policy_ids)` rejects empty reports, malformed IDs, unknown IDs, or reports missing at least one current EVT and one retrieved POL. Success message states ID checks do not prove semantic support.
 
-## Live AI boundary
+**Limitations (current `ai_client.py`):**
+- Citation membership is **not** semantic proof of every sentence.
+- There is **no** post-hoc regex that rejects “confirmed compromise” or classification-overstatement wording; the system prompt instructs the model not to assert confirmed compromise, but a non-compliant model reply can still pass if its EVT/POL IDs are valid.
+- Unicode look-alike dashes in IDs are normalized inside `generate_report` before return; `validate_report_citations` still treats un-normalized Unicode-dash tokens as malformed if called on raw text.
+- Live Nebius behavior (latency, quota, model availability) is environment-specific and not guaranteed by unit tests.
 
-When enabled by the analyst, `ai_client.py` sends the current synthetic incident, a grounded deterministic analysis payload (classification, risk score, severity, investigation priority, rule hits, evidence), and retrieved policies to the Nebius Token Factory OpenAI-compatible endpoint using the selected NVIDIA Nemotron model. The key is read from Streamlit Secrets or the environment; it is not stored in source control. Provider failures and empty/malformed responses raise `AIReportError`; GuardBee never fabricates a substitute report.
+## Workflow gating
 
-The response must be non-empty and cite at least one ID from the current incident plus at least one ID from the policies retrieved for the current analysis. Citation extraction normalizes common Unicode dashes to ASCII and matches simple `EVT-*` / `POL-*` tokens so model typography (for example non-breaking hyphens or `EVT-002-EVT-005` ranges) does not falsely fail or invent unknown IDs. Unknown, stale, unretrieved, or missing IDs invalidate the report. Reports that claim confirmed compromise, or that treat unfamiliar IP alone as proof of malice, are rejected. These checks are necessary guardrails, not full semantic fact-checking.
+- `analysis_context_id` — SHA-256 over incident, analysis, and retrieved policy IDs.
+- `can_record_decision` — requires non-empty report, matching context id, report id, and no prior decision for that report id.
+- `build_decision_record` — `APPROVED`/`REJECTED` only; includes `simulation_only`, evidence/policy ids, `status=RECORDED`.
 
-## Decision and audit gate
+## Audit implementation
 
-The current incident, deterministic analysis, and retrieved policy IDs form a SHA-256 context fingerprint. A report is accepted only for that context. A successful report receives a session-specific report ID; one simulated approval or rejection may be recorded for it. New analysis creates a new report ID and permits one new decision. Changing the incident clears the active report and decision.
+| Layer | Behavior |
+|---|---|
+| UI (`app.py`) | Appends records to `st.session_state.audit`; Audit History reads that list; warns session-only |
+| Module (`audit_store.py`) | SQLite table `audit_decisions`; unique `report_id`; refuses secret-like keys; path `data/audit.db` or `GUARDBEE_AUDIT_DB` |
 
-The audit record contains UTC timestamp, incident ID, demo actor, decision, outcome, simulation flag, report ID, report context ID, evidence IDs, policy IDs, and status. It is written to SQLite and mirrored in session state after hydrate; secrets are refused.
-
-## Dependencies and secrets
-
-`requirements.txt` declares the direct runtime dependencies: Streamlit, scikit-learn, and the OpenAI Python SDK. Audit persistence uses the Python standard library `sqlite3` module (no extra package). `.gitignore` excludes `.streamlit/secrets.toml`, `.env`, `*.db`, virtual environments, bytecode, pytest cache, coverage output, and common local-editor artifacts. Use `.streamlit/secrets.toml.example` as a template; do not commit a real secret file.
+Do not document SQLite as the live UI path unless `app.py` imports and calls `audit_store`.

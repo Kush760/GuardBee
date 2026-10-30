@@ -1,26 +1,48 @@
-# API Design
+# Module Interface Design (MVP v2.2)
 
-## Implemented provider contract
+Internal Python interfaces used by GuardBee. Authority: the named modules on disk.
 
-`ai_client.py` uses the OpenAI Python SDK with the fixed `BASE_URL` value `https://api.tokenfactory.us-central1.nebius.com/v1/`. It initializes `OpenAI(base_url=BASE_URL, api_key=..., timeout=60.0)` and calls chat completions with temperature `0.2` and maximum 750 tokens.
+## `data_loader.py`
 
-## Configuration
+- `load_incidents(path) -> list[dict]` — fail-closed.
+- `load_policies(path) -> list[dict]` — fail-closed.
+- `load_incidents_partitioned(path) -> IncidentPartitionResult` — valid + issues (unused by UI).
+- `DataValidationError` — load/validation failures.
 
-| Input | Current behavior |
-| --- | --- |
-| `NEBIUS_API_KEY` | Required. Read from Streamlit Secrets first, then environment. |
-| `NEBIUS_MODEL` | Optional. Read from Streamlit Secrets or environment; falls back to the code default. |
-| `NEBIUS_BASE_URL` | Not currently configurable; the base URL is a source constant. |
-| `NEMOTRON_MODEL` | Not currently read; use `NEBIUS_MODEL`. |
+## `engine.py`
 
-Never place real values in documentation, code, test fixtures, or tracked config.
+- `analyze_incident(incident, *, failure_burst_window_minutes=30) -> dict` — see DATA_MODEL analysis fields.
 
-## Prompt and validation
+## `retrieval.py`
 
-The system prompt requires cautious, evidence-only analysis, separates observed facts from potential impact, asks for concise Markdown sections, requires `EVT-*` and `POL-*` citations, and prohibits claiming an action executed. The user message serializes current incident, deterministic analysis, and retrieved policy data.
+- `DEFAULT_MIN_SIMILARITY = 0.08`, `DEFAULT_TOP_K = 3`
+- `retrieve_policies(query, policies, top_k=3, min_similarity=0.08) -> list[dict]` with `match_score`.
 
-The validator rejects empty reports; unknown/stale event IDs; unretrieved policy IDs; and reports without at least one current event ID and one retrieved policy ID. It only proves ID membership, not the semantic correctness of each sentence.
+## `ai_client.py`
 
-## Error behavior and status
+- `generate_report(api_key, incident, analysis, policies, model=None, base_url=None) -> str`
+- `validate_report_citations(report, evidence_ids, policy_ids) -> tuple[bool, str]`
+- `extract_citation_ids(report) -> tuple[list[str], list[str]]`
+- `configured_base_url()`, `configured_model()`
+- `AIReportError`
 
-Missing keys, SDK/provider exceptions, and malformed/empty responses produce `AIReportError`. The UI displays an actionable error and keeps approval disabled. No live key, account-specific model call, response latency, or provider benchmark has been verified in this repository.
+## `workflow.py`
+
+- `analysis_context_id(incident, analysis, policies) -> str`
+- `can_record_decision(report, report_context_id, current_context_id, report_id, existing_decision) -> bool`
+- `build_decision_record(...) -> dict | None`
+
+## `audit_store.py` (standalone relative to UI)
+
+- `save_decision(record, path=None) -> dict`
+- `list_decisions(path=None) -> list[dict]`
+- `get_decision_by_report_id(report_id, path=None) -> dict | None`
+- `initialize_database(path=None)`, `default_db_path()`, `AuditStoreError`
+
+## `ui_presentation.py`
+
+Pure helpers for filters/labels; consumed by unit tests. Current `app.py` defines its own presentation helpers.
+
+## `app.py` integration surface
+
+Imports: `ai_client` (report/validate/extract/config), `data_loader` (`DataValidationError`, `load_incidents`, `load_policies`), `engine.analyze_incident`, `retrieval` (`DEFAULT_MIN_SIMILARITY`, `retrieve_policies`), `workflow` (context + decision helpers). Does **not** import `audit_store` or `ui_presentation`.

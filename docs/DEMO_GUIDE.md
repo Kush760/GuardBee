@@ -1,27 +1,60 @@
-# Demo Guide
+# Demo Guide (MVP v2.2)
 
-## Under-three-minute judge script
+## Startup
 
-### 0:00-0:20 - Problem and boundary
+```powershell
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt   # if needed
+streamlit run app.py
+```
 
-“Suspicious-login alerts often require connecting logs, policy, and a human decision. GuardBee demonstrates that workflow using synthetic data only; it never changes a real account.”
+Configure `NEBIUS_API_KEY` only if you will show a live AI report.
 
-### 0:20-0:50 - Dashboard and investigation
+## UI navigation
 
-Use the classification filter (`SUSPICIOUS` / `NORMAL` / `INSUFFICIENT_EVIDENCE`). Select `INC-1001` under Suspicious. Show classification, investigation priority, score 70/100, severity HIGH (not `None`), rule hits, and `EVT-*` IDs. Switch to Normal (`INC-1003`) and Insufficient (`INC-1002`) to show that normals are not presented as suspicious and insufficient is not confirmed compromise. Facts come from Python rules, not AI.
+Sidebar pages:
 
-### 0:50-1:15 - Policy retrieval
+1. **Dashboard** — total incidents, classification KPIs, donut chart, recent incidents with View.
+2. **Security Incidents** — search, filter, list, investigation workspace.
+3. **Audit History** — session decisions, filters, row detail, open incident.
 
-Open Company Policy Check. Show the matching `POL-*` passages and their TF-IDF scores. Explain that below-threshold passages are not labelled relevant.
+Sidebar also shows demo-only notice, Nebius key status, model name, and session decision count.
 
-### 1:15-1:55 - AI analysis
+## Investigation flow
 
-If a verified authorized Nebius configuration is available, request the live analysis and show current event/policy citations. Do not claim live inference if it has not been tested. Without it, show the missing-key/failure behavior and explain that approval remains locked.
+1. Open **Security Incidents** and select e.g. a high-interest incident from the list.
+2. Review header KPIs: risk score, severity, priority (from `engine.py`).
+3. **Timeline** — events with evidence highlighting.
+4. **Rules & Evidence** — rule hits, observed facts, engine interpretation, unknowns.
+5. **Relevant Policies** — TF-IDF matches ≥ `DEFAULT_MIN_SIMILARITY` (0.08).
+6. Click **Request AI Report** (disabled when no policy match).
 
-### 1:55-2:30 - Human decision and audit
+## Policy evidence
 
-After a valid report, choose one simulation-only outcome. Show the audit row and locked controls. State that another decision requires a new AI analysis, no real session is revoked, and audit rows persist in local SQLite across restart.
+Matched passages show id, title, similarity, text, and optional investigation guidance. No match → warning; AI and decisions unavailable.
 
-### 2:30-2:50 - Safety and close
+## AI report workflow
 
-Summarize: deterministic risk, visible policy evidence, citation-gated AI, human approval, and SQLite-backed simulated audit. Point out the scope boundaries and current external verification status honestly.
+- Spinner while calling Nebius; failures set `report_status` and do not fabricate text.
+- Success requires citation validation against current event IDs and matched policy IDs.
+- AI Analysis tab shows validated citations and Markdown report.
+- Caption clarifies citations ≠ semantic proof.
+
+## Simulated decisions
+
+- Approve / Reject unlock only when `can_record_decision` is true.
+- Outcomes are labeled simulation-only; no external systems change.
+- One decision per active validated report id; switching incidents clears report state.
+
+## Audit history behavior
+
+- Lists `session_state.audit` newest-first with filters.
+- UI warns that storage is session-only (SQLite module not wired).
+- Click a row for detail; optional navigation back to the incident.
+
+## Demo limitations
+
+- Synthetic data; not live monitoring.
+- Live AI depends on key, quota, model, and network.
+- Audit does not survive restart in the current UI.
+- Do not claim real containment occurred.

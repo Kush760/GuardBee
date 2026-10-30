@@ -1,25 +1,38 @@
-# MVP Workflow
+# MVP Workflow (MVP v2.2)
 
-MVP Scope v2.2 §7 names **Dashboard**, **Security Incidents**, and **Audit History** as workflow areas to improve. GuardBee delivers them as three Streamlit navigation views in `app.py` (`st.navigation` / `st.Page`): Dashboard KPIs and recent incidents, Security Incidents investigation (timeline, rules, policies, AI analysis), and Audit History for persisted simulated decisions. See [ADR-008](DECISIONS.md#adr-008-streamlit-navigation-for-mvp-scope-v22--7).
+GuardBee provides three Streamlit pages via `st.Page` / `st.navigation` in `app.py`:
 
-## 1. Security Dashboard
+1. **Dashboard** — KPIs, classification overview, recent incidents.
+2. **Security Incidents** — search/filter, deterministic investigation, policy retrieval, optional AI, simulated decision.
+3. **Audit History** — session-scoped simulated decisions.
 
-The Dashboard shows total valid incidents, classification counts from `engine.py`, rejected-record count from `load_incidents_partitioned()`, and a classification overview chart. Severity is displayed only when applicable (`N/A` / not assigned for normal and insufficient-evidence cases).
+## End-to-end path
 
-## 2. Incident Investigation
+1. **Load** — `load_incidents` + `load_policies` (fail-closed).
+2. **Analyze** — `analyze_incident` for each incident (cached in-memory for the run).
+3. **Select** — analyst opens an incident; prior report/decision session fields clear on incident change.
+4. **Retrieve** — `retrieve_policies` with query from title, department, flags, suggested action.
+5. **Fingerprint** — `analysis_context_id(incident, analysis, matched_policies)`.
+6. **Explain (optional)** — `generate_report` → `validate_report_citations`.
+7. **Decide (optional)** — `can_record_decision` / `build_decision_record` → append `session_state.audit`.
+8. **Review** — Audit History filters and detail for session records.
 
-On **Security Incidents**, GuardBee displays the synthetic account, department, classification, investigation priority, severity (or not assigned), chronological event timeline, rule hits, and evidence IDs returned by `engine.py`. No model participates in this step. A risk score is not proof of compromise.
+```mermaid
+flowchart TD
+  A[Load validated JSON] --> B[Deterministic analyze_incident]
+  B --> C[Retrieve policies]
+  C --> D{Matched?}
+  D -- No --> E[AI and decision locked]
+  D -- Yes --> F[Optional AI report]
+  F --> G{Citations OK?}
+  G -- No --> H[Error; no decision]
+  G -- Yes --> I[Simulated Approve/Reject]
+  I --> J[session_state.audit]
+```
 
-## 3. Company Policy Check
+Canonical diagram files: [diagrams/workflow.mmd](diagrams/workflow.mmd), [diagrams/data_flow.mmd](diagrams/data_flow.mmd).
 
-The application creates a query from incident title, department, rule flags, and suggested action. `retrieval.py` returns up to three policies meeting the `0.08` cosine-similarity threshold. A no-match state is shown explicitly.
+## Persistence clarification
 
-## 4. AI Security Analysis
-
-When there is a policy match and the analyst clicks **Request AI Report**, GuardBee sends current synthetic incident facts, deterministic analysis, and retrieved policies to the configured Nebius endpoint. Success or failure feedback appears in the investigation view; a report must cite current `EVT-*` IDs and retrieved `POL-*` IDs. Missing credentials, provider failures, malformed output, no policy match, or citation failure keep the report invalid and approval disabled.
-
-## 5. Response and Audit
-
-One validated report can receive either Approve simulated response or Reject recommendation. The app persists a simulated audit event in local SQLite at `data/audit.db` (unique per report ID), hydrates history on startup, and disables both controls for that report. **Audit History** shows evidence IDs, policy IDs, and report context when recorded. A new AI analysis creates a new report ID; selecting a different incident invalidates the active report.
-
-The application performs no real remediation. See [workflow diagram](diagrams/workflow.mmd).
+- **Session state:** reports, active report id, decision lock, audit list used by the UI.
+- **SQLite (`audit_store.py`):** available as a library with tests; **not** invoked by current `app.py`.

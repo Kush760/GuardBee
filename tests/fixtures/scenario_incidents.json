@@ -439,6 +439,99 @@
     ]
   },
   {
+    "id": "INC-1011",
+    "title": "Account takeover with impossible travel",
+    "account": "sales-director@example.test",
+    "department": "Sales",
+    "home_city": "Delhi",
+    "home_country": "India",
+    "known_ips": [
+      "203.0.113.150"
+    ],
+    "events": [
+      {
+        "id": "EVT-501",
+        "time_utc": "2026-10-21T05:30:00Z",
+        "type": "login_success",
+        "ip": "203.0.113.150",
+        "country": "India",
+        "city": "Delhi"
+      },
+      {
+        "id": "EVT-502",
+        "time_utc": "2026-10-21T06:00:00Z",
+        "type": "login_failed",
+        "ip": "198.51.100.151",
+        "country": "Indonesia",
+        "city": "Jakarta"
+      },
+      {
+        "id": "EVT-503",
+        "time_utc": "2026-10-21T06:01:00Z",
+        "type": "login_failed",
+        "ip": "198.51.100.151",
+        "country": "Indonesia",
+        "city": "Jakarta"
+      },
+      {
+        "id": "EVT-504",
+        "time_utc": "2026-10-21T06:02:00Z",
+        "type": "login_failed",
+        "ip": "198.51.100.151",
+        "country": "Indonesia",
+        "city": "Jakarta"
+      },
+      {
+        "id": "EVT-505",
+        "time_utc": "2026-10-21T06:03:00Z",
+        "type": "login_failed",
+        "ip": "198.51.100.151",
+        "country": "Indonesia",
+        "city": "Jakarta"
+      },
+      {
+        "id": "EVT-506",
+        "time_utc": "2026-10-21T06:03:30Z",
+        "type": "login_failed",
+        "ip": "192.0.2.77",
+        "country": "Germany",
+        "city": "Frankfurt"
+      },
+      {
+        "id": "EVT-507",
+        "time_utc": "2026-10-21T06:04:00Z",
+        "type": "login_failed",
+        "ip": "198.51.100.151",
+        "country": "Indonesia",
+        "city": "Jakarta"
+      },
+      {
+        "id": "EVT-508",
+        "time_utc": "2026-10-21T06:04:30Z",
+        "type": "login_failed",
+        "ip": "198.51.100.151",
+        "country": "Indonesia",
+        "city": "Jakarta"
+      },
+      {
+        "id": "EVT-509",
+        "time_utc": "2026-10-21T06:05:00Z",
+        "type": "login_failed",
+        "ip": "192.0.2.77",
+        "country": "Germany",
+        "city": "Frankfurt"
+      },
+      {
+        "id": "EVT-510",
+        "time_utc": "2026-10-21T06:06:00Z",
+        "type": "login_success",
+        "ip": "198.51.100.151",
+        "country": "Indonesia",
+        "city": "Jakarta"
+      }
+    ]
+  },
+  {
     "id": "INC-1012",
     "title": "Suspicious signals from a known IP",
     "account": "qa-user-1012@example.test",

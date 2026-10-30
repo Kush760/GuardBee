@@ -1,101 +1,74 @@
-# Quick Start & Usage Guide
+# GuardBee Quick Start
 
-A simple, step-by-step guide to run and use **GuardBee**.
+**MVP v2.2**
 
----
+## Prerequisites
 
-## 1. Where Is the Frontend?
+- Python 3.11+ recommended (CI uses 3.11)
+- Network access only if you will request a live Nebius AI report
 
-GuardBee uses **Streamlit**. The frontend UI is served locally and accessed directly via your web browser:
-
-- **Local UI URL:** [http://localhost:8501](http://localhost:8501)
-- **Main App File:** `app.py` (Dashboard, Security Incidents, and Audit History via Streamlit navigation)
-
-When you run the app, Streamlit starts the local server and automatically launches this URL in your default browser.
-
----
-
-## 2. Installation & Setup
-
-Open PowerShell or your command terminal in the project root directory:
-
-### Step 1: Create and activate virtual environment
+## Environment setup
 
 ```powershell
+cd E:\Hackathon\Guardbee
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-*(On macOS/Linux, run: `source .venv/bin/activate`)*
-
-### Step 2: Install dependencies
-
-```powershell
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> **Note:** If you are running in your base Python environment and already have `streamlit`, `scikit-learn`, and `openai` installed, you can skip this step or run `python -m streamlit run app.py` directly.
-
-### Step 3: Set up secrets (Optional for AI analysis)
-
-If you wish to test live AI reports via Nebius Token Factory:
+## Secrets
 
 ```powershell
 Copy-Item .streamlit\secrets.toml.example .streamlit\secrets.toml
 ```
 
-Edit `.streamlit/secrets.toml`:
+Edit `.streamlit/secrets.toml` (gitignored):
 
 ```toml
-NEBIUS_API_KEY = "your-nebius-api-key"
-NEBIUS_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+NEBIUS_API_KEY = "your-token-factory-key"
+# Optional:
+# NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
+# NEBIUS_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 ```
 
-> **Note:** The core incident explorer, deterministic risk scoring, and policy retrieval work without an API key. Live AI reports require a valid key. Never commit `.streamlit/secrets.toml`.
+Without a key, the app still loads and runs deterministic analysis; AI report requests fail with a clear error.
 
----
-
-## 3. Starting the Project
-
-Run the following command:
+## Start the app
 
 ```powershell
 streamlit run app.py
 ```
 
-Streamlit will print the local URL and automatically open GuardBee in your browser:
-```text
-Local URL: http://localhost:8501
-```
+Open the URL Streamlit prints (typically `http://localhost:8501`).
 
----
+## Basic usage
 
-## 4. How to Use GuardBee
+1. **Dashboard** — KPIs, classification overview, recent incidents.
+2. **Security Incidents** — search/filter, select an incident, review Timeline / Rules & Evidence / Relevant Policies / AI Analysis.
+3. Click **Request AI Report** when policies matched and a key is configured.
+4. After a citation-validated report, use **Approve** or **Reject** (simulated).
+5. **Audit History** — decisions recorded in this browser session only.
 
-Once loaded at `http://localhost:8501`:
+## Common startup issues
 
-1. **Dashboard:** Review KPI counts (including rejected records from partitioned loading) and open a recent incident, or use **Security Incidents** in the sidebar.
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| App stops with validation error | Invalid `data/incidents.json` or `policies.json` | Fix JSON; load is fail-closed |
+| No Nebius key warning | Missing secret/env | Add `NEBIUS_API_KEY` locally |
+| AI report error / empty | Key, quota, model, network, or token budget | See sidebar model; retry; check `docs/TROUBLESHOOTING.md` |
+| Approve/Reject locked | No validated report for current context | Generate a successful report first |
+| Audit empty after restart | Session-only storage | Expected for current UI |
 
-2. **Select an Incident:**
-   - Use the searchable incident picker (for example `INC-1001`).
-   - Inspect the chronological timeline, rules/evidence, and retrieved policies.
-
-3. **Generate AI Analysis:**
-   - Click **Request AI Report** to call NVIDIA Nemotron via Nebius Token Factory when a key is configured.
-   - Success or failure feedback appears in the investigation view; Approve/Reject stay locked until citations validate.
-
-4. **Submit Analyst Decision:**
-   - After a citation-validated report, **Approve** or **Reject** records a simulated decision only.
-
-5. **Audit History:**
-   - Open **Audit History** to review persisted SQLite rows (`data/audit.db`), including evidence IDs, policy IDs, and report context. Rows survive app restarts.
-
----
-
-## 5. Running Automated Tests
-
-To run the full test suite and verify system health:
+## CI (local equivalent)
 
 ```powershell
+python -c "from pathlib import Path; from data_loader import load_incidents, load_policies; load_incidents(Path('data/incidents.json')); load_policies(Path('data/policies.json'))"
 python -m unittest discover -s tests -v
 ```
+
+## More detail
+
+- [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md)
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md)

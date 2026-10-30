@@ -4,7 +4,8 @@ Three native-Streamlit pages (Dashboard, Security Incidents, Audit History) shar
 one visual system. Risk facts come from engine.py, policies from retrieval.py,
 AI text from ai_client.py, and decision gates from workflow.py; this module only
 presents them. Data text is shown in plain-text widgets (tables, metrics) or is
-Markdown-escaped first. The only HTML injected is the static stylesheet below.
+Markdown-escaped first. The only HTML injected is the static stylesheet below and a
+fixed, data-free script that scrolls the incident tabs into view after a report request.
 """
 
 from __future__ import annotations
@@ -21,13 +22,13 @@ import streamlit as st
 
 from ai_client import (
     AIReportError,
+    configured_base_url,
     configured_model,
     extract_citation_ids,
     generate_report,
     validate_report_citations,
 )
-from audit_store import AuditStoreError, get_decision_by_report_id, list_decisions, save_decision
-from data_loader import DataValidationError, load_incidents_partitioned, load_policies
+from data_loader import DataValidationError, load_incidents, load_policies
 from engine import analyze_incident
 from retrieval import DEFAULT_MIN_SIMILARITY, retrieve_policies
 from workflow import analysis_context_id, build_decision_record, can_record_decision
@@ -51,15 +52,19 @@ CLASSIFICATIONS = {
     ),
     "NORMAL": ("green", "No suspicious pattern was detected by the configured rules in the available events."),
 }
-SEVERITY_COLORS = {"HIGH": "red", "MEDIUM": "orange", "LOW": "blue"}
+SEVERITY_COLORS = {"CRITICAL": "violet", "HIGH": "red", "MEDIUM": "orange", "LOW": "blue"}
 # Card tints (see the tone-* rules in STYLES); they follow engine output, never invent it.
 CLASSIFICATION_TONES = {"SUSPICIOUS": "red", "NORMAL": "green", "INSUFFICIENT_EVIDENCE": "amber"}
-SEVERITY_TONES = {"HIGH": "red", "MEDIUM": "amber", "LOW": "blue"}
+SEVERITY_TONES = {"CRITICAL": "red", "HIGH": "red", "MEDIUM": "amber", "LOW": "blue"}
 # Same hues as the tone-* card values; green stays reserved for the NORMAL classification.
-SEVERITY_HEX = {"HIGH": "#DC2626", "MEDIUM": "#D97706", "LOW": "#2563EB", "Not assigned": "#64748B"}
+SEVERITY_HEX = {
+    "CRITICAL": "#7C3AED", "HIGH": "#DC2626", "MEDIUM": "#D97706", "LOW": "#2563EB", "Not assigned": "#64748B"
+}
 CLASSIFICATION_HEX = {"SUSPICIOUS": "#DC2626", "NORMAL": "#16A34A", "INSUFFICIENT_EVIDENCE": "#D97706"}
 # Markdown colour names for legend dots, matched to the chart hues above.
-LEGEND_DOTS = {"#DC2626": "red", "#16A34A": "green", "#D97706": "orange", "#2563EB": "blue", "#64748B": "gray"}
+LEGEND_DOTS = {
+    "#7C3AED": "violet", "#DC2626": "red", "#16A34A": "green", "#D97706": "orange", "#2563EB": "blue", "#64748B": "gray"
+}
 # Keyed containers (needed for per-card tints) arrived in newer Streamlit; older ones stay untinted.
 CONTAINER_TAKES_KEY = "key" in inspect.signature(st.container).parameters
 DECISION_LABELS = {"APPROVED": "✅ APPROVED", "REJECTED": "⛔ REJECTED"}
@@ -85,7 +90,7 @@ STYLES = """
 }
 html, body, .stApp { font-family: Inter, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
 .stApp { background: var(--gb-bg); }
-[data-testid="stMainBlockContainer"] { padding-top: 2rem; padding-bottom: 3rem; max-width: 1360px; }
+[data-testid="stMainBlockContainer"] { padding-top: 2rem; padding-bottom: 3rem; max-width: 1640px; }
 /* Collapsed sidebar: the top bar shows the logo icon, so give it a surface and push content below it. */
 .stApp:has([data-testid="stSidebar"][data-collapsed="true"]) [data-testid="stHeader"] {
   background: rgba(244, 247, 252, 0.94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--gb-border); }
@@ -95,16 +100,33 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [data-testid="stMain"] [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p { font-size: 0.92rem; }
 
 /* Dashboard (mockup layout) */
-[class*="st-key-dash-"] h3 { font-size: 1.05rem !important; font-weight: 700; padding: 0 0 0.25rem !important; }
+/* Heading scale: page title 2.1rem > section heading 1.35rem > card title 1.15rem > body 0.9rem */
+[data-testid="stMain"] h3 { font-size: 1.35rem !important; font-weight: 700 !important; color: #0F172A;
+  padding: 0.25rem 0 0.45rem !important; }
+[data-testid="stMain"] h4 { font-size: 1.15rem !important; font-weight: 700 !important; color: #0F172A;
+  padding: 0.1rem 0 0.4rem !important; }
+[data-testid="stMain"] h3 [data-testid="stHeaderActionElements"],
+[data-testid="stMain"] h4 [data-testid="stHeaderActionElements"] { display: none; }
+/* A heading that follows other content gets room above it, so each section starts visibly. */
+[data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:not(:first-child) h3,
+[data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:not(:first-child) h4 {
+  padding-top: 0.75rem !important; }
 [data-testid="stMain"] [class*="st-key-tone-"] { min-height: 132px; }
 [class*="st-key-tone-"][class*="-kpi-"] { position: relative; padding-left: 3.9rem !important; min-height: 176px; }
 [class*="st-key-tone-"][class*="-kpi-"] [data-testid="stMetricLabel"] p { text-transform: none; letter-spacing: 0;
-  font-size: 0.8rem; font-weight: 700; }
-[class*="st-key-kpi-icon-"] { position: absolute !important; left: 1rem; top: 1.1rem; width: 38px !important;
+  font-size: 1rem; font-weight: 700; line-height: 1.25; }
+/* Every label gets the same two-line slot, centred on the 38px icon chip, so the numbers below line up. */
+[class*="st-key-tone-"][class*="-kpi-"]:not([class*="-kpi-c-"]) [data-testid="stMetricLabel"] {
+  min-height: 2.5rem; display: flex; align-items: center; }
+[class*="st-key-kpi-icon-"] { position: absolute !important; left: 1rem; top: 1.975rem; width: 38px !important;
   height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
 [class*="st-key-kpi-icon-"] { gap: 0 !important; padding: 0 !important; }
 [class*="st-key-kpi-icon-"] > div { width: auto !important; }
 [class*="st-key-kpi-icon-"] [data-testid="stMarkdownContainer"], [class*="st-key-kpi-icon-"] p { margin: 0 !important; line-height: 1; }
+[class*="st-key-tone-"] [data-testid="stCaptionContainer"] p { color: #475569; }  /* readable on the deeper tints */
+/* White chips stand out on the tinted cards; the icon keeps the tone colour. */
+[class*="st-key-kpi-icon-"][class*="st-key-kpi-icon-"] { background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 6px rgba(20, 33, 61, 0.08); }
 [class*="st-key-kpi-icon-"] span[role="img"] { font-size: 1.3rem; color: inherit; }
 [class*="st-key-kpi-icon-red"] { background: #FECACA; color: #DC2626; }
 [class*="st-key-tone-red-kpi"] [data-testid="stMetricLabel"] p { color: #DC2626; }
@@ -117,14 +139,34 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 [class*="st-key-kpi-icon-violet"] { background: #DDD6FE; color: #6D28D9; }
 [class*="st-key-tone-violet-kpi"] [data-testid="stMetricLabel"] p { color: #6D28D9; }
 .st-key-dash-overview, .st-key-dash-recent { min-height: 318px; }
+/* Overview: donut and legend centred in the card, legend as a row of small stat blocks. */
+.st-key-dash-overview { justify-content: space-between; }
+.st-key-overview-legend [data-testid="stColumn"] { text-align: center; border-left: 1px solid var(--gb-border); }
+.st-key-overview-legend [data-testid="stColumn"]:first-child { border-left: none; }
+.st-key-overview-legend p { font-size: 0.85rem; color: var(--gb-muted); margin: 0; line-height: 1.5;
+  text-align: center; }
+.st-key-overview-legend [data-testid="stMarkdownContainer"] { width: 100%; }
+.st-key-overview-legend strong { font-size: 1.35rem; color: var(--gb-text); }
+.st-key-overview-legend [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
+.st-key-overview-legend [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
+.st-key-overview-legend [data-testid="stColumn"] { min-width: 0 !important; }
 .st-key-dash-thead { border-bottom: 1px solid var(--gb-border); }
 .st-key-dash-thead [data-testid="stCaptionContainer"] { font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.04em; font-size: 0.72rem; }
 [class*="st-key-dash-row-"] { border-bottom: 1px solid #EEF2F7; padding: 0.1rem 0 0.35rem; }
 [class*="st-key-dash-row-"] p { font-size: 0.86rem; margin-bottom: 0; }
 [class*="st-key-dash_view_"] button { min-height: 1.9rem; padding: 0.1rem 0.5rem; font-size: 0.8rem; }
-.st-key-dash_view_all button { background: transparent; border: none; color: var(--gb-accent);
-  box-shadow: none; justify-content: flex-end; }
+.st-key-dash_view_all [data-testid="stButton"] { display: flex; justify-content: flex-end; }
+[data-testid="stMain"] .st-key-dash_view_all button { background: transparent; border: none; color: var(--gb-accent);
+  box-shadow: none; width: auto !important; padding-right: 0.25rem; }
+[class*="st-key-dash-row-"] [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
+/* Side-by-side cards share one height: each card fills its stretched column. */
+.st-key-layout-split > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > [data-testid="stVerticalBlock"],
+.st-key-layout-pair > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > [data-testid="stVerticalBlock"] {
+  height: 100%; }
+.st-key-layout-split > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"],
+.st-key-layout-pair > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"] {
+  flex: 1 1 auto; }
 .st-key-dash-source { background: #EEF4FF !important; border-color: #C7D7FE !important; }
 .st-key-dash-source { padding: 0.7rem 1rem !important; }
 .st-key-dash-source [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
@@ -141,12 +183,19 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 .st-key-incident_picker [data-testid="stRadioOption"] > div > div:first-child { display: none; }
 .st-key-incident_picker [data-testid="stRadioOption"] p { font-size: 0.88rem; }
 .st-key-incident_picker [data-testid="stCaptionContainer"] p { font-size: 0.78rem; }
-[class*="st-key-inc-"] h3 { font-size: 1.25rem !important; padding: 0 !important; }
+/* The radio dot is hidden, so captions start flush with the title instead of under the missing dot. */
+.st-key-incident_picker [data-testid="stRadioCaption"] { padding-left: 0 !important; }
+.st-key-incident_picker, .st-key-incident_picker [data-testid="stRadio"],
+.st-key-incident_picker [data-testid="stRadioGroup"] { width: 100% !important; }
+[class*="st-key-inc-"] h3 { font-size: 1.5rem !important; padding: 0 !important; }
 [class*="st-key-tl-"] p { font-size: 0.88rem; margin-bottom: 0; }
 [class*="st-key-tl-"] [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
 .st-key-inc-engine li { margin-bottom: 0.15rem; font-size: 0.9rem; }
 .st-key-inc-engine li p { margin: 0; }
 .st-key-inc-basic [data-testid="stCaptionContainer"] p { margin-bottom: 0; font-size: 0.75rem; }
+.st-key-inc-basic > * > [data-testid="stHorizontalBlock"] { row-gap: 0.6rem; }
+.st-key-inc-basic > * > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+  flex: 1 1 calc(33.333% - 1rem) !important; min-width: calc(33.333% - 1rem) !important; }
 .st-key-inc-engine { background: #F8FAFF !important; }
 .st-key-inc-policies, .st-key-inc-decision { min-height: 190px; }
 
@@ -163,6 +212,9 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 .st-key-inc-header h3 .stMarkdownColoredText:first-child { width: 2.5rem; height: 2.5rem; border-radius: 12px;
   margin-right: 0.6rem; }
 .st-key-inc-header h3 span[role="img"] { font-size: 1.5rem; }
+/* Keep the classification badge clear of the heading's icon tile. */
+.st-key-inc-header [data-testid="stMarkdownContainer"]:has(h3) { margin-bottom: 0.2rem !important; }
+.st-key-inc-header h3 { line-height: 2.5rem !important; }
 .st-key-incident_picker [role="radiogroup"] > div { transition: transform .15s ease, box-shadow .15s ease,
   border-color .15s ease, background .15s ease; }
 .st-key-incident_picker [role="radiogroup"] > div:hover { transform: translateX(3px);
@@ -175,38 +227,10 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
   box-shadow: 0 10px 24px rgba(20, 33, 61, 0.06); }
 [data-testid="stMain"] button { transition: transform .15s ease, box-shadow .15s ease, filter .15s ease; }
 [data-testid="stMain"] button:not(:disabled):hover { transform: translateY(-1px); }
-[data-testid="stMain"] .st-key-ai_request_btn button:not(:disabled) {
-  background: linear-gradient(135deg, #4F46E5 0%, #6366F1 45%, #7C3AED 100%);
-  color: #FFFFFF; border: none; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35); }
-[data-testid="stMain"] .st-key-ai_request_btn button:not(:disabled):hover {
-  filter: brightness(1.08); box-shadow: 0 6px 18px rgba(124, 58, 237, 0.40); }
-[data-testid="stMain"] .st-key-ai_request_btn button:not(:disabled):focus-visible {
-  outline: 3px solid #A5B4FC; outline-offset: 2px; }
-[data-testid="stMain"] .st-key-ai_request_btn button:disabled {
-  background: linear-gradient(135deg, #A5B4FC 0%, #C4B5FD 100%);
-  color: #F8FAFC; border: none; opacity: 0.55; cursor: not-allowed; box-shadow: none; }
-[data-testid="stMain"] .st-key-engine_full_report button {
+[data-testid="stMain"] .st-key-ai_request_btn button, [data-testid="stMain"] .st-key-engine_full_report button {
   background: #EEF2FF; color: var(--gb-accent); border: 1px solid #C7D2FE; }
+[data-testid="stMain"] .st-key-ai_request_btn button:not(:disabled):hover,
 [data-testid="stMain"] .st-key-engine_full_report button:hover { background: #E0E7FF; border-color: #A5B4FC; }
-/* Desktop: keep the incident picker independently scrollable beside the investigation pane. */
-@media (min-width: 861px) {
-  .st-key-incident_picker { max-height: min(72vh, 720px); overflow-y: auto; overscroll-behavior: contain;
-    padding-right: 0.25rem; scrollbar-width: thin; }
-}
-/* Subtle pulse on high-risk KPI cards only; respect reduced motion. */
-@keyframes gb-high-risk-pulse {
-  0%, 100% { box-shadow: 0 1px 2px rgba(20, 33, 61, 0.04), 0 0 0 0 rgba(220, 38, 38, 0.0); }
-  50% { box-shadow: 0 8px 20px rgba(220, 38, 38, 0.16), 0 0 0 3px rgba(254, 202, 202, 0.55); }
-}
-[class*="st-key-tone-red-kpi"]:not([class*="-kpi-c-"]) {
-  animation: gb-high-risk-pulse 2.8s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  [class*="st-key-tone-red-kpi"]:not([class*="-kpi-c-"]),
-  [data-testid="stMain"] [class*="st-key-tone-"]:hover,
-  [data-testid="stMain"] button:not(:disabled):hover,
-  .st-key-incident_picker [role="radiogroup"] > div:hover {
-    animation: none !important; transform: none !important; transition: none !important; }
-}
 [data-testid="stMain"] .st-key-btn_approve button:disabled { background: #16A34A; color: #FFFFFF; opacity: 0.35; }
 [data-testid="stMain"] .st-key-btn_reject button:disabled { background: #DC2626; color: #FFFFFF; opacity: 0.35; }
 .st-key-timeline { gap: 0 !important; }
@@ -266,15 +290,15 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
   box-shadow: 0 1px 2px rgba(20, 33, 61, 0.04), 0 4px 16px rgba(20, 33, 61, 0.04);
 }
 [class*="st-key-tone-"] { border-radius: 12px; }
-[class*="st-key-tone-red"] { background: linear-gradient(135deg, #FFE4E6 0%, #FFF5F6 45%, #FFFFFF 100%) !important; border-color: #FECDD3 !important; }
+[class*="st-key-tone-red"] { background: linear-gradient(135deg, #FECACA 0%, #FEE2E2 55%, #FFF1F2 100%) !important; border-color: #FCA5A5 !important; }
 [class*="st-key-tone-red"] [data-testid="stMetricValue"] { color: #DC2626; }
-[class*="st-key-tone-green"] { background: linear-gradient(135deg, #DCFCE7 0%, #F3FDF6 45%, #FFFFFF 100%) !important; border-color: #BBF7D0 !important; }
+[class*="st-key-tone-green"] { background: linear-gradient(135deg, #BBF7D0 0%, #DCFCE7 55%, #F0FDF4 100%) !important; border-color: #86EFAC !important; }
 [class*="st-key-tone-green"] [data-testid="stMetricValue"] { color: #16A34A; }
-[class*="st-key-tone-amber"] { background: linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 45%, #FFFFFF 100%) !important; border-color: #FDE68A !important; }
+[class*="st-key-tone-amber"] { background: linear-gradient(135deg, #FDE68A 0%, #FEF3C7 55%, #FFFBEB 100%) !important; border-color: #FCD34D !important; }
 [class*="st-key-tone-amber"] [data-testid="stMetricValue"] { color: #D97706; }
-[class*="st-key-tone-blue"] { background: linear-gradient(135deg, #DBEAFE 0%, #F0F6FF 45%, #FFFFFF 100%) !important; border-color: #BFDBFE !important; }
+[class*="st-key-tone-blue"] { background: linear-gradient(135deg, #BFDBFE 0%, #DBEAFE 55%, #EFF6FF 100%) !important; border-color: #93C5FD !important; }
 [class*="st-key-tone-blue"] [data-testid="stMetricValue"] { color: #2563EB; }
-[class*="st-key-tone-violet"] { background: linear-gradient(135deg, #EDE9FE 0%, #F7F5FF 45%, #FFFFFF 100%) !important; border-color: #DDD6FE !important; }
+[class*="st-key-tone-violet"] { background: linear-gradient(135deg, #DDD6FE 0%, #EDE9FE 55%, #F5F3FF 100%) !important; border-color: #C4B5FD !important; }
 [class*="st-key-tone-violet"] [data-testid="stMetricValue"] { color: #6D28D9; }
 [data-testid="stMain"] button[data-testid="stBaseButton-primary"]:not(:disabled) {
   background: linear-gradient(90deg, #4F46E5 0%, #6366F1 55%, #7C3AED 100%); border: none; color: #FFFFFF;
@@ -295,8 +319,8 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 /* Tabs, expanders, tables, buttons */
 [data-testid="stTabs"] button[role="tab"] p { font-weight: 600; font-size: 0.95rem; }
 [data-testid="stTabs"] [data-testid="stMarkdownContainer"] h1,
-[data-testid="stTabs"] [data-testid="stMarkdownContainer"] h2 { font-size: 1.2rem; padding-top: 0.6rem; }
-[data-testid="stTabs"] [data-testid="stMarkdownContainer"] h3 { font-size: 1.05rem; padding-top: 0.4rem; }
+[data-testid="stTabs"] [data-testid="stMarkdownContainer"] h2 { font-size: 1.3rem; padding-top: 0.6rem; }
+[data-testid="stTabs"] [data-testid="stMarkdownContainer"] h3 { font-size: 1.15rem !important; padding-top: 0.4rem !important; }
 [data-testid="stExpander"] details { background: var(--gb-card); border-radius: 10px; border-color: var(--gb-border); }
 [data-testid="stDataFrame"] { border-radius: 10px; }
 [data-testid="stMain"] [data-testid="stElementContainer"]:has(> [data-testid="stButton"]),
@@ -378,6 +402,8 @@ h1 { font-weight: 750 !important; font-size: 2.1rem !important; padding: 0 0 0.1
 @media (max-width: 640px) {
   [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
   h1 { font-size: 1.6rem !important; }
+  [data-testid="stMain"] h3 { font-size: 1.2rem !important; }
+  [data-testid="stMain"] h4 { font-size: 1.05rem !important; }
 }
 </style>
 """
@@ -388,6 +414,19 @@ _MARKDOWN_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+\-.!|<>~$:@])")
 def md(value: Any) -> str:
     """Escape Markdown so data text is always shown literally."""
     return _MARKDOWN_SPECIAL.sub(r"\\\1", str(value))
+
+
+_REPORT_IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+_REPORT_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_REPORT_ADDRESS = re.compile(r"(?i)\b(?:https?://|www\.)[^\s`<>]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def report_markdown(report: str) -> str:
+    """Keep the model's headings and lists but never render its links, images, or auto-links."""
+    text = _REPORT_IMAGE.sub(r"\1", report)
+    text = _REPORT_LINK.sub(r"\1", text)
+    text = _REPORT_ADDRESS.sub(lambda match: code(match.group(0)), text)  # code spans never become links
+    return text.replace("<", "\\<")
 
 
 def code(value: Any) -> str:
@@ -406,6 +445,14 @@ def read_api_key() -> str:
         return os.getenv("NEBIUS_API_KEY", "")
 
 
+def read_base_url() -> str:
+    """Optional NEBIUS_BASE_URL override for a regional Token Factory endpoint."""
+    try:
+        return str(st.secrets.get("NEBIUS_BASE_URL", configured_base_url()))
+    except FileNotFoundError:
+        return configured_base_url()
+
+
 def read_model() -> str:
     """Allow an account-approved model ID in secrets or the local environment."""
     try:
@@ -415,7 +462,6 @@ def read_model() -> str:
 
 
 def initialize_session() -> None:
-    first_load = "audit_hydrated" not in st.session_state
     st.session_state.setdefault("report", None)
     st.session_state.setdefault("report_status", None)
     st.session_state.setdefault("audit", [])
@@ -424,10 +470,6 @@ def initialize_session() -> None:
     st.session_state.setdefault("active_report_id", None)
     st.session_state.setdefault("report_sequence", 0)
     st.session_state.setdefault("current_incident_id", None)
-    if first_load:
-        # Hydrate durable simulated decisions so history survives Streamlit restarts.
-        st.session_state.audit = list_decisions()
-        st.session_state.audit_hydrated = True
 
 
 def clear_report_state() -> None:
@@ -439,9 +481,22 @@ def clear_report_state() -> None:
     st.session_state.decision = None
 
 
+INCIDENT_TABS_KEY = "incident_tabs"
+TAB_TIMELINE = "Timeline"
+TAB_AI = "AI Analysis"
+# Fixed script (no data inside): after a report request, bring the incident tabs into view.
+SCROLL_TO_TABS = """<script>
+setTimeout(() => {
+  const tabs = document.querySelector('[data-testid="stMain"] [data-testid="stTabs"]');
+  if (tabs) tabs.scrollIntoView({behavior: "smooth", block: "start"});
+}, 250);
+</script>"""
+
+
 def reset_investigation_state(incident_id: str) -> None:
     if st.session_state.get("active_incident_id") != incident_id:
         st.session_state.active_incident_id = incident_id
+        st.session_state[INCIDENT_TABS_KEY] = TAB_TIMELINE
         clear_report_state()
 
 
@@ -457,30 +512,10 @@ def go_to_incident(incident_id: str) -> None:
     st.switch_page(INCIDENTS_PAGE)
 
 
-def existing_decision_for_report(report_id: str | None) -> dict[str, Any] | None:
-    """Prefer the in-session lock, then any SQLite row for this report ID."""
-    session_decision = st.session_state.get("decision")
-    if session_decision and report_id and session_decision.get("report_id") == report_id:
-        return session_decision
-    if not report_id:
-        return session_decision
-    persisted = get_decision_by_report_id(report_id)
-    if persisted:
-        st.session_state.decision = persisted
-        return persisted
-    return session_decision
-
-
 def audit_decision(
-    incident: dict[str, Any],
-    decision: str,
-    outcome: str,
-    current_context_id: str,
-    evidence_ids: list[str] | None = None,
-    policy_ids: list[str] | None = None,
+    incident: dict[str, Any], decision: str, outcome: str, current_context_id: str
 ) -> bool:
-    """Persist at most one simulated decision for the active validated report."""
-    report_id = st.session_state.active_report_id
+    """Record at most one simulated decision for the active validated report."""
     record = build_decision_record(
         incident["id"],
         decision,
@@ -488,19 +523,13 @@ def audit_decision(
         st.session_state.report,
         st.session_state.report_context_id,
         current_context_id,
-        report_id,
-        existing_decision_for_report(report_id),
-        evidence_ids=evidence_ids,
-        policy_ids=policy_ids,
+        st.session_state.active_report_id,
+        st.session_state.decision,
     )
     if not record:
         return False
-    try:
-        stored = save_decision(record)
-    except AuditStoreError:
-        return False
-    st.session_state.audit = list_decisions()
-    st.session_state.decision = stored
+    st.session_state.audit.append(record)
+    st.session_state.decision = record
     return True
 
 
@@ -514,12 +543,13 @@ def run_ai_analysis(
     clear_report_state()
     try:
         with st.spinner("Generating AI report via Nebius Token Factory. GuardBee never fabricates reports..."):
-            report = generate_report(read_api_key(), incident, analysis, matched_policies, model=read_model())
+            report = generate_report(
+                read_api_key(), incident, analysis, matched_policies, model=read_model(), base_url=read_base_url()
+            )
         usable, reason = validate_report_citations(
             report,
             [event["id"] for event in incident["events"]],
             [policy["id"] for policy in matched_policies],
-            classification=analysis.get("classification"),
         )
         if not usable:
             st.session_state.report_status = reason
@@ -551,6 +581,13 @@ def classification_badge(analysis: dict[str, Any]) -> str:
     if not value:
         return f":gray-background[{NOT_CLASSIFIED.upper()}]"
     return f":{CLASSIFICATIONS[value][0]}-background[{value.replace('_', ' ')}]"
+
+
+def location(item: dict[str, Any], city_field: str = "city", country_field: str = "country") -> str:
+    """'City, Country' from synthetic location labels; 'Unknown' when none was recorded."""
+    parts = [item.get(city_field), item.get(country_field)]
+    text = ", ".join(part.strip() for part in parts if isinstance(part, str) and part.strip())
+    return text or "Unknown"
 
 
 def severity_text(analysis: dict[str, Any]) -> str:
@@ -596,6 +633,11 @@ def card(parent: Any = st, key: str | None = None) -> Any:
     return parent.container(border=True)
 
 
+def card_title(text: str) -> None:
+    """Card heading: a real h4 so it stands apart from body text (section headings use st.subheader)."""
+    st.markdown(f"#### {text}")
+
+
 def empty_state(message: str, icon: str = "ℹ️") -> None:
     with st.container(border=True):
         st.info(message, icon=icon)
@@ -613,7 +655,7 @@ def render_sidebar() -> None:
             else:
                 st.caption(":orange[●] No Nebius API key — AI reports will show an error")
             st.caption(f"Model · {md(read_model())}")
-            st.caption(f"Simulated decisions in local SQLite audit · **{len(st.session_state.audit)}**")
+            st.caption(f"Simulated decisions this session · **{len(st.session_state.audit)}**")
         st.caption(":material/shield: GuardBee · Synthetic demo")
 
 
@@ -628,10 +670,7 @@ if logo.exists():
 
 try:
     with st.spinner("Loading synthetic incidents..."):
-        # Scope §1.2: process valid incidents and report invalid ones separately.
-        incident_partition = load_incidents_partitioned(ROOT / "data" / "incidents.json")
-        incidents = incident_partition.valid
-        incident_load_errors = incident_partition.errors
+        incidents = load_incidents(ROOT / "data" / "incidents.json")
         policies = load_policies(ROOT / "data" / "policies.json")
 except DataValidationError as exc:
     st.title("GuardBee")
@@ -641,18 +680,6 @@ except DataValidationError as exc:
         icon="🚫",
     )
     st.caption(f"Validation error: {md(exc)} Fix the data file and reload the app.")
-    st.stop()
-
-if incident_load_errors:
-    st.warning(
-        "Validation excluded one or more incident records. "
-        "These are data-quality errors, not security findings."
-    )
-    for message in incident_load_errors:
-        st.caption(message)
-
-if not incidents:
-    st.error("No valid incidents remain after validation. Fix the data file and reload.")
     st.stop()
 
 incident_by_id = {incident["id"]: incident for incident in incidents}
@@ -694,11 +721,11 @@ def kpi_card(
 
 
 def overview_donut(groups: list[tuple[str, int, str]]) -> None:
-    """Donut of engine counts with the total in the middle; the legend beside it carries the labels."""
+    """Centred donut of engine counts with the total in the middle; the legend below carries the labels."""
     rows = [{"Group": name, "Count": count} for name, count, _ in groups]
     arcs = (
         alt.Chart(alt.Data(values=rows))
-        .mark_arc(innerRadius=56, outerRadius=82, stroke="#FFFFFF", strokeWidth=2)
+        .mark_arc(innerRadius=78, outerRadius=116, cornerRadius=6, padAngle=0.025, stroke="#FFFFFF", strokeWidth=2)
         .encode(
             theta=alt.Theta("Count:Q", stack=True),
             color=alt.Color(
@@ -710,17 +737,13 @@ def overview_donut(groups: list[tuple[str, int, str]]) -> None:
         )
     )
     centre = alt.Chart(alt.Data(values=[{"total": str(len(incidents)), "label": "Total incidents"}]))
-    total = centre.mark_text(fontSize=26, fontWeight=700, color="#14213D", dy=-8).encode(text="total:N")
-    label = centre.mark_text(fontSize=11, color="#64748B", dy=14).encode(text="label:N")
-    st.altair_chart((arcs + total + label).properties(height=190).configure_view(stroke=None))
+    total = centre.mark_text(fontSize=40, fontWeight=700, color="#14213D", dy=-10).encode(text="total:N")
+    label = centre.mark_text(fontSize=13, color="#64748B", dy=20).encode(text="label:N")
+    st.altair_chart((arcs + total + label).properties(height=250).configure_view(stroke=None))
 
 
 def dashboard_page() -> None:
-    page_header(
-        "Welcome to GuardBee",
-        "Security Analytics Console",
-        "Synthetic suspicious-login incidents at a glance.",
-    )
+    page_header("Welcome to GuardBee", "Security Analytics Console", "Synthetic suspicious-login incidents at a glance.")
 
     # Row 1: KPI cards
     with keyed(st, "layout-kpis"):
@@ -737,21 +760,10 @@ def dashboard_page() -> None:
             value, caption = "—", "Not classified yet"
             label = key.replace("_", " ").capitalize()
         kpi_card(column, label, value, caption, CLASSIFICATION_TONES[key], icon)
-    rejected_count = len(incident_load_errors)
     kpi_card(
-        cards[4],
-        "Rejected records",
-        rejected_count,
-        "Reported separately" if rejected_count else "None rejected",
-        "violet",
-        "report",
-        help_text=(
-            "Invalid incident records are reported by load_incidents_partitioned() and excluded from "
-            "analysis while valid records continue. This count is the number of rejected records, not "
-            "a security finding."
-            if rejected_count
-            else "All incident records in the loaded dataset passed validation."
-        ),
+        cards[4], "Rejected records", 0, "Fail-closed loader", "violet", "report",
+        help_text="Every record must pass validation or loading stops, so a loaded dataset has no rejected "
+        "records. Partial processing is not implemented yet.",
     )
 
     # Row 2: overview donut and recent incidents
@@ -777,13 +789,10 @@ def dashboard_page() -> None:
             ]
             groups = [group for group in groups if group[1] or group[0] != NOT_ASSIGNED]
             st.caption("By severity — engine.py does not classify yet, and GuardBee never infers a class.")
-        chart, legend = st.columns([1, 1], vertical_alignment="center")
-        with chart:
-            overview_donut(groups)
-        with legend:
-            for name, count, hex_ in groups:
-                dot = LEGEND_DOTS.get(hex_, "gray")
-                st.markdown(f":{dot}[●] {name} · **{count}** ({percent(count)})")
+        overview_donut(groups)
+        with keyed(st, "overview-legend"):
+            for column, (name, count, hex_) in zip(st.columns(len(groups), gap="small"), groups):
+                column.markdown(f":{LEGEND_DOTS.get(hex_, 'gray')}[●] {name}  \n**{count}** · {percent(count)}")
 
     with card(right, "dash-recent"):
         st.subheader("Recent Incidents")
@@ -808,8 +817,7 @@ def dashboard_page() -> None:
                 row[4].markdown(f":violet-background[{md(priority)}]" if priority else "—")
                 if row[5].button("View", key=f"dash_view_{incident['id']}"):
                     go_to_incident(incident["id"])
-        _, more = st.columns([3, 1])
-        if more.button("View All →", key="dash_view_all"):
+        if st.button("View All →", key="dash_view_all"):
             st.switch_page(INCIDENTS_PAGE)
 
     # Row 3: data source strip
@@ -841,24 +849,26 @@ def short_time(value: str) -> str:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).strftime("%b %d, %H:%M")
 
 
+def matches_filter(incident: dict[str, Any], option: str) -> bool:
+    wanted = INCIDENT_FILTERS.get(option)
+    analysis = analyses[incident["id"]]
+    return wanted is None or analysis.get("severity") == wanted or classification_of(analysis) == wanted
+
+
 def filtered_incidents() -> list[dict[str, Any]]:
-    wanted = INCIDENT_FILTERS.get(st.session_state.get("incident_filter", "All"))
+    option = st.session_state.get("incident_filter", "All")
     query = st.session_state.get("incident_search", "").strip().lower()
     return [
         incident
         for incident in incidents
-        if (
-            wanted is None
-            or analyses[incident["id"]].get("severity") == wanted
-            or classification_of(analyses[incident["id"]]) == wanted
-        )
+        if matches_filter(incident, option)
         and (not query or any(query in str(incident[field]).lower() for field in ("id", "title", "account", "department")))
     ]
 
 
 def render_incident_list(shown: list[dict[str, Any]]) -> str | None:
     with card(st, "inc-list"):
-        st.markdown(f"**Incidents ({len(shown)})**")
+        card_title(f"Incidents ({len(shown)})")
         if not shown:
             st.info("No incidents match the search or filter.")
             return None
@@ -890,17 +900,18 @@ def render_basic_info(incident: dict[str, Any]) -> None:
     fields = (
         ("Account", code(incident["account"])),
         ("Department", md(incident["department"])),
-        ("Known IPs", code(", ".join(incident.get("known_ips", [])) or "none listed")),
+        ("Known IPs · Home", f"{code(', '.join(incident.get('known_ips', [])) or 'none listed')} · "
+                             f"{md(location(incident, 'home_city', 'home_country'))}"),
         ("Latest event", "Failed login" if latest["type"] == "login_failed" else "Successful login"),
         ("Timestamp (UTC)", md(latest["time_utc"])),
-        ("Source IP · Location", f"{code(latest['ip'])} · {md(latest.get('country') or 'Unknown')}"),
+        ("Source IP · Location", f"{code(latest['ip'])} · {md(location(latest))}"),
     )
     with card(st, "inc-basic"):
-        st.markdown("**Basic Information**")
-        for row in (fields[:3], fields[3:]):
-            for column, (label, value) in zip(st.columns(3, gap="small"), row):
-                column.caption(label)
-                column.markdown(value)
+        card_title("Basic Information")
+        # One wrapping row: three fields per line, two on narrow screens (see the inc-basic styles).
+        for column, (label, value) in zip(st.columns(len(fields), gap="small"), fields):
+            column.caption(label)
+            column.markdown(value)
 
 
 def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
@@ -923,32 +934,34 @@ def render_timeline(incident: dict[str, Any], analysis: dict[str, Any]) -> None:
                 tag = " :violet-background[evidence]" if event["id"] in evidence else ""
                 what.markdown(
                     f"**{'Failed login' if failed else 'Successful login'}** from {code(event['ip'])} "
-                    f"({place}, {md(event.get('country') or 'Unknown')}){tag}"
+                    f"({place}, {md(location(event))}){tag}"
                 )
-        with st.expander("Event table"):
-            st.dataframe(
-                [
-                    {
-                        "Event": event["id"],
-                        "Time (UTC)": event["time_utc"],
-                        "Type": "Failed login" if event["type"] == "login_failed" else "Successful login",
-                        "IP": event["ip"],
-                        "IP status": "Known" if event["ip"] in known else "Unfamiliar",
-                        "Country": event.get("country", ""),
-                        "Rule evidence": event["id"] in evidence,
-                    }
-                    for event in ordered
-                ],
-                hide_index=True,
-            )
     with card(engine_column, "inc-engine"):
-        st.markdown("**Engine Analysis**")
+        card_title("Engine Analysis")
         for flag in analysis["flags"] or ["No configured rule matched the available events."]:
             st.markdown(f"- {md(flag)}")
         st.caption(md(f"Suggested (simulated) action: {analysis['suggested_action']}"))
         st.caption("Rule-based findings and score: not a probability and not proof of compromise.")
         if st.button("View Full Report", key="engine_full_report", icon=":material/description:"):
             full_report_dialog(incident["id"])
+    # Full width below both columns so every column of the table fits without sideways scrolling.
+    with st.expander("Event table"):
+        st.dataframe(
+            [
+                {
+                    "Event": event["id"],
+                    "Time (UTC)": event["time_utc"],
+                    "Type": "Failed login" if event["type"] == "login_failed" else "Successful login",
+                    "IP": event["ip"],
+                    "IP status": "Known" if event["ip"] in known else "Unfamiliar",
+                    "Location": location(event),
+                    # Text, not a boolean: a read-only checkbox looks clickable but does nothing.
+                    "Rule evidence": "✓ Evidence" if event["id"] in evidence else "—",
+                }
+                for event in ordered
+            ],
+            hide_index=True,
+        )
 
 
 @st.dialog("Engine analysis — full report", width="medium")
@@ -994,7 +1007,7 @@ def render_rules(incident: dict[str, Any], analysis: dict[str, Any], scope: str 
     with keyed(st, f"layout-findings-{scope}"):  # the dialog renders a second copy
         facts, inference, unknowns = st.columns(3, gap="small")
     with facts.container(border=True):
-        st.markdown("**Observed facts**")
+        card_title("Observed facts")
         st.markdown(
             md(
                 f"{failed} failed and {len(events) - failed} successful logins "
@@ -1003,12 +1016,12 @@ def render_rules(incident: dict[str, Any], analysis: dict[str, Any], scope: str 
         )
         st.markdown(md(f"Unfamiliar IPs: {', '.join(unfamiliar)}.") if unfamiliar else "All events came from known IPs.")
     with inference.container(border=True):
-        st.markdown("**Engine interpretation**")
+        card_title("Engine interpretation")
         for flag in analysis["flags"] or ["No configured rule matched."]:
             st.markdown(f"- {md(flag)}")
         st.caption(md(f"Suggested (simulated) action: {analysis['suggested_action']}"))
     with unknowns.container(border=True):
-        st.markdown("**Unknowns & limitations**")
+        card_title("Unknowns & limitations")
         for unknown in UNKNOWNS:
             st.markdown(f"- {md(unknown)}")
 
@@ -1028,6 +1041,8 @@ def render_policies(matched_policies: list[dict[str, Any]]) -> None:
         label = f"{policy['id']} · {policy['title']} · similarity {policy['match_score']:.3f}"
         with st.expander(md(label), expanded=index == 0):
             st.markdown(md(policy["text"]))
+            if policy.get("investigation_guidance"):
+                st.info(md(f"Investigation guidance: {policy['investigation_guidance']}"), icon="🧭")
 
 
 def render_ai_panel(
@@ -1047,7 +1062,7 @@ def render_ai_panel(
             + "; ".join(f"`{policy_id}` {md(titles.get(policy_id, ''))}" for policy_id in cited_policies)
         )
         with st.container(border=True):
-            st.markdown(st.session_state.report)
+            st.markdown(report_markdown(st.session_state.report))
         st.caption(
             "Citation checks prove the IDs belong to this incident and its retrieved policies, not that every "
             "sentence is correct. Treat inferred risk and unknowns as unconfirmed."
@@ -1069,7 +1084,7 @@ def render_ai_panel(
 
 def render_policy_summary(matched_policies: list[dict[str, Any]]) -> None:
     with card(st, "inc-policies"):
-        st.markdown("**Relevant Policies**")
+        card_title("Relevant Policies")
         if not matched_policies:
             st.caption("No policy passage met the similarity threshold.")
         for index, policy in enumerate(matched_policies, 1):
@@ -1077,55 +1092,50 @@ def render_policy_summary(matched_policies: list[dict[str, Any]]) -> None:
         st.caption("Full passages and similarity scores are in the Relevant Policies tab.")
 
 
-def render_decision_panel(
-    incident: dict[str, Any],
-    analysis: dict[str, Any],
-    context_id: str,
-    matched_policies: list[dict[str, Any]],
-) -> bool:
-    report_id = st.session_state.active_report_id
-    locked_decision = existing_decision_for_report(report_id)
+def render_decision_panel(incident: dict[str, Any], analysis: dict[str, Any], context_id: str) -> bool:
     can_decide = can_record_decision(
         st.session_state.report,
         st.session_state.report_context_id,
         context_id,
-        report_id,
-        locked_decision,
+        st.session_state.active_report_id,
+        st.session_state.decision,
     )
-    evidence_ids = list(analysis.get("evidence_ids") or [])
-    policy_ids = [policy["id"] for policy in matched_policies]
     with card(st, "inc-decision"):
-        st.markdown("**Take Action (Simulated)**")
+        card_title("Take Action (Simulated)")
         st.caption(f"SIMULATED ACTION — NO REAL ACCOUNT ACTION · Proposed: {md(analysis['suggested_action'])}")
-        decision = locked_decision
+        decision = st.session_state.decision
+        earlier = next(
+            (record for record in reversed(st.session_state.audit) if record["incident_id"] == incident["id"]), None
+        )
         if decision:
             st.success(
                 md(f"{decision['decision']} recorded at {decision['time_utc']} (UTC): {decision['outcome']}"),
                 icon="📝",
             )
-        elif not st.session_state.report:
-            st.caption("🔒 Locked until a citation-validated AI report is available for this incident.")
-        elif not can_decide:
-            st.caption("🔒 Locked: the AI report belongs to a different incident or context. Request a new report.")
+        else:
+            if earlier:  # the active decision is cleared on leaving an incident; the audit keeps it
+                st.info(
+                    md(f"Last recorded decision: {earlier['decision']} at {earlier['time_utc']} (UTC). "
+                       "A new decision needs a new citation-validated AI report."),
+                    icon="📝",
+                )
+            if not st.session_state.report:
+                st.caption("🔒 Locked until a citation-validated AI report is available for this incident.")
+            elif not can_decide:
+                st.caption("🔒 Locked: the AI report belongs to a different incident or context. Request a new report.")
         approve, reject = st.columns(2)
         for column, label, key, verdict, outcome in (
             (approve, "✓ Approve", "btn_approve", "APPROVED",
-             "Simulated session-revocation response recorded; no external system was changed."),
+             f"Simulated response recorded for the proposed action: {analysis['suggested_action'].rstrip('.')}. "
+             "No external system was changed."),
             (reject, "✕ Reject", "btn_reject", "REJECTED",
              "No action taken; recommendation rejected by demo analyst."),
         ):
             if column.button(label, key=key, disabled=not can_decide):
-                if audit_decision(
-                    incident,
-                    verdict,
-                    outcome,
-                    context_id,
-                    evidence_ids=evidence_ids,
-                    policy_ids=policy_ids,
-                ):
+                if audit_decision(incident, verdict, outcome, context_id):
                     st.rerun()
                 st.error("The decision was not recorded: the report is no longer valid for this context.")
-        if decision and st.button("View in Audit History →", key="open_audit"):
+        if (decision or earlier) and st.button("View in Audit History →", key="open_audit"):
             st.switch_page(AUDIT_PAGE)
     return can_decide
 
@@ -1148,19 +1158,14 @@ def render_investigation(incident: dict[str, Any]) -> None:
             "Request AI Report", key="ai_request_btn", icon=":material/auto_awesome:", disabled=not matched_policies
         ):
             run_ai_analysis(incident, analysis, matched_policies, context_id)
-        # Visible outcome beside the button; full report and Retry stay in the AI Analysis tab.
+            # The tabs render later in this run, so the outcome opens straight on the AI Analysis tab.
+            st.session_state[INCIDENT_TABS_KEY] = TAB_AI
+            st.session_state.scroll_to_tabs = True
+        # Report the outcome beside the button; the full report and Retry live in the AI Analysis tab.
         if st.session_state.report:
-            st.success(
-                "AI report ready and citation-validated. Open the **AI Analysis** tab to review it, "
-                "then use Approve / Reject when unlocked.",
-                icon="✅",
-            )
+            st.success("AI report ready and citation-validated. It is open in the **AI Analysis** tab below.", icon="✅")
         elif st.session_state.report_status:
-            st.error(
-                f"AI report failed: {md(st.session_state.report_status)} "
-                "Open the **AI Analysis** tab to retry after checking the API key, network, and model.",
-                icon="🚫",
-            )
+            st.error(f"AI report failed: {md(st.session_state.report_status)}", icon="🚫")
         classification = classification_of(analysis)
         st.caption(
             CLASSIFICATIONS[classification][1]
@@ -1185,7 +1190,8 @@ def render_investigation(incident: dict[str, Any]) -> None:
     render_basic_info(incident)
 
     timeline_tab, rules_tab, policy_tab, ai_tab = st.tabs(
-        ["Timeline", "Rules & Evidence", "Relevant Policies", "AI Analysis"]
+        # on_change="rerun" makes the tabs a tracked widget, so setting INCIDENT_TABS_KEY selects a tab.
+        [TAB_TIMELINE, "Rules & Evidence", "Relevant Policies", TAB_AI], key=INCIDENT_TABS_KEY, on_change="rerun"
     )
     with timeline_tab:
         render_timeline(incident, analysis)
@@ -1195,13 +1201,15 @@ def render_investigation(incident: dict[str, Any]) -> None:
         render_policies(matched_policies)
     with ai_tab:
         render_ai_panel(incident, analysis, matched_policies, context_id)
+    if st.session_state.pop("scroll_to_tabs", False):  # once, on the run that handled the request
+        st.html(SCROLL_TO_TABS, unsafe_allow_javascript=True)
 
     with keyed(st, "layout-pair"):
         policies_column, decision_column = st.columns(2, gap="small")
     with policies_column:
         render_policy_summary(matched_policies)
     with decision_column:
-        can_decide = render_decision_panel(incident, analysis, context_id, matched_policies)
+        can_decide = render_decision_panel(incident, analysis, context_id)
 
     if st.session_state.report:
         ai_step = ":green[✔] AI report"
@@ -1220,7 +1228,10 @@ def render_investigation(incident: dict[str, Any]) -> None:
     )
 
 
-INCIDENT_FILTERS = {"All": None, "High severity": "HIGH", "Medium severity": "MEDIUM", "Low severity": "LOW"}
+INCIDENT_FILTERS = {
+    "All": None, "Critical severity": "CRITICAL", "High severity": "HIGH", "Medium severity": "MEDIUM",
+    "Low severity": "LOW",
+}
 if any_classified:
     INCIDENT_FILTERS.update({key.replace("_", " ").title(): key for key in CLASSIFICATIONS})
 
@@ -1234,7 +1245,10 @@ def incidents_page() -> None:
         "Search", placeholder="Search by incident ID, title, account…", key="incident_search",
         label_visibility="collapsed",
     )
-    choose.selectbox("Filter", list(INCIDENT_FILTERS), key="incident_filter", label_visibility="collapsed")
+    choose.selectbox(
+        "Filter", list(INCIDENT_FILTERS), key="incident_filter", label_visibility="collapsed",
+        format_func=lambda option: f"{option} ({sum(matches_filter(incident, option) for incident in incidents)})",
+    )
 
     with keyed(st, "layout-incidents"):
         left, main = st.columns([1.25, 3], gap="medium")
@@ -1250,6 +1264,12 @@ def incidents_page() -> None:
 # ---------------------------------------------------------------------------
 # Page 3 - Audit History
 # ---------------------------------------------------------------------------
+def selected_record(shown: list[dict[str, Any]], cells: list[Any]) -> dict[str, Any]:
+    """The audit record whose cell was clicked, else the newest shown record."""
+    row = cells[0][0] if cells else 0
+    return shown[row] if 0 <= row < len(shown) else shown[0]
+
+
 def audit_page() -> None:
     page_header(
         "Audit History",
@@ -1257,16 +1277,16 @@ def audit_page() -> None:
         "Every Approve or Reject decision recorded against a citation-validated AI report, newest first.",
     )
     st.markdown(":red-background[SIMULATION ONLY — NO REAL ACCOUNT ACTIONS WERE TAKEN]")
-    st.info(
-        "Local SQLite audit store (data/audit.db): these simulated decisions are saved on disk and "
-        "survive browser refreshes and app restarts. No real account or external system is ever modified.",
-        icon="ℹ️",
+    st.warning(
+        "Session-only storage: the persistent SQLite audit store is not implemented yet, so these records "
+        "disappear when the browser session ends or the app restarts.",
+        icon="⚠️",
     )
     records = list(reversed(st.session_state.audit))
     if not records:
         empty_state(
-            "No simulated decisions are stored yet. Open Security Incidents, generate a "
-            "citation-validated AI report, and approve or reject it.",
+            "No simulated decisions have been recorded in this session yet. Open Security Incidents, "
+            "generate an AI report, and approve or reject it.",
             icon="📭",
         )
         return
@@ -1282,52 +1302,39 @@ def audit_page() -> None:
             for record in records
             if decision_filter in ("All", record["decision"]) and incident_filter in ("All", record["incident_id"])
         ]
-        st.dataframe(
+        table = st.dataframe(
             [
                 {
                     "Time (UTC)": record["time_utc"],
                     "Incident": record["incident_id"],
                     "Decision": DECISION_LABELS.get(record["decision"], record["decision"]),
-                    "Simulation only": record["simulation_only"],
+                    "Simulation only": "Yes" if record["simulation_only"] else "No",
                     "Actor": record["actor"],
                     "Report reference": record["report_id"],
                 }
                 for record in shown
             ],
             hide_index=True,
+            on_select="rerun",
+            # Clicking any cell picks its row. One selection mode only: a ticked row checkbox would
+            # otherwise outrank a later cell click, and the app cannot tell which came last.
+            selection_mode="single-cell",
+            # Selection is positional, so a new filter gets a fresh table (and selection).
+            key=f"audit_table:{decision_filter}:{incident_filter}",
+            selection_default={"selection": {"rows": [], "columns": [], "cells": [(0, "Time (UTC)")] if shown else []}},
         )
-        st.caption(f"Showing {len(shown)} of {len(records)} record(s).")
+        st.caption(f"Showing {len(shown)} of {len(records)} record(s). Click a row to see its details below.")
 
     if shown:
+        record = selected_record(shown, table.selection.cells)
         with st.container(border=True):
             st.subheader("Record detail")
-            index = st.selectbox(
-                "Record",
-                range(len(shown)),
-                format_func=lambda i: f"{shown[i]['time_utc']} · {shown[i]['incident_id']} · {shown[i]['decision']}",
-                key="audit_record",
-            )
-            record = shown[index]
             details = st.columns(3)
             details[0].markdown(f"**Decision**  \n{DECISION_LABELS.get(record['decision'], md(record['decision']))}")
             details[1].markdown(f"**Incident**  \n{md(record['incident_id'])}")
             details[2].markdown(f"**Time (UTC)**  \n{md(record['time_utc'])}")
             st.markdown(f"**Outcome:** {md(record['outcome'])}")
-            evidence_ids = [str(item) for item in (record.get("evidence_ids") or []) if item]
-            policy_ids = [str(item) for item in (record.get("policy_ids") or []) if item]
-            context_id = record.get("report_context_id")
-            st.markdown(
-                "**Evidence IDs:** "
-                + (" ".join(code(event_id) for event_id in evidence_ids) if evidence_ids else "_None recorded_")
-            )
-            st.markdown(
-                "**Policy IDs:** "
-                + (" ".join(code(policy_id) for policy_id in policy_ids) if policy_ids else "_None recorded_")
-            )
-            st.caption(md(f"Report reference: {record.get('report_id') or '—'}"))
-            st.caption(
-                md(f"Report context ID: {context_id}") if context_id else "Report context ID: _Not recorded_"
-            )
+            st.caption(md(f"Report reference: {record['report_id']}"))
             if record["incident_id"] in incident_by_id and st.button("Open incident →", key="audit_open"):
                 go_to_incident(record["incident_id"])
 

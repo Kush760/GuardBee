@@ -1,8 +1,6 @@
 """Headless Streamlit UI tests. The AI provider is always mocked; no network call is made."""
 
-import os
 import re
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,7 +10,6 @@ from streamlit.testing.v1 import AppTest
 import ai_client
 import data_loader
 import engine
-from data_loader import IncidentPartitionResult
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 VALID_REPORT = "## Observed facts\nEVT-006 succeeded after failures EVT-002, per POL-001."
@@ -59,24 +56,6 @@ def metric_values(app):
 
 class TestGuardBeeUI(unittest.TestCase):
     def setUp(self):
-        # Isolate SQLite audit rows from the developer's local data/audit.db.
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._db_path = Path(self._tmpdir.name) / "ui-audit.db"
-        previous = os.environ.get("GUARDBEE_AUDIT_DB")
-        os.environ["GUARDBEE_AUDIT_DB"] = str(self._db_path)
-
-        def _restore_env() -> None:
-            if previous is None:
-                os.environ.pop("GUARDBEE_AUDIT_DB", None)
-            else:
-                os.environ["GUARDBEE_AUDIT_DB"] = previous
-            try:
-                self._tmpdir.cleanup()
-            except PermissionError:
-                pass
-
-        self.addCleanup(_restore_env)
-
         # Any path that reaches the provider without its own mock fails instead of calling Nebius.
         patcher = patch.object(
             ai_client, "generate_report", side_effect=AssertionError("live provider call attempted")
@@ -99,6 +78,7 @@ class TestGuardBeeUI(unittest.TestCase):
     def test_dashboard_and_every_incident_render(self):
         dashboard = start_app()
         self.assertFalse(dashboard.exception)
+        self.assertEqual(dashboard.title[0].value, "Welcome to GuardBee")
         self.assertIn("Demo only", page_text(dashboard))  # sidebar disclaimer, shown on every page
         for incident_id in ("INC-1001", "INC-1002", "INC-1003"):
             with self.subTest(incident=incident_id):
@@ -110,13 +90,18 @@ class TestGuardBeeUI(unittest.TestCase):
     def test_app_injects_no_dynamic_html(self):
         source = APP_PATH.read_text(encoding="utf-8")
         self.assertNotIn("unsafe_allow_html", source)
-        self.assertEqual(re.findall(r"st\.html\((.*?)\)", source), ["STYLES"])
+        # Only fixed constants reach st.html: the stylesheet and the data-free scroll-to-tabs script.
+        self.assertEqual(
+            re.findall(r"st\.html\((.*?)\)", source),
+            ["STYLES", "SCROLL_TO_TABS, unsafe_allow_javascript=True"],
+        )
+        self.assertIn('SCROLL_TO_TABS = """<script>', source)  # a plain literal, never an f-string
 
     def test_dashboard_counts_come_from_engine(self):
         app = start_app()
         values = metric_values(app)
-        self.assertEqual(values["Total valid incidents"], "13")
-        self.assertEqual(values["Suspicious"], "6")
+        self.assertEqual(values["Total valid incidents"], "16")
+        self.assertEqual(values["Suspicious"], "9")
         self.assertEqual(values["Normal"], "3")
         self.assertEqual(values["Insufficient Evidence"], "4")
         self.assertEqual(values["Rejected records"], "0")
@@ -191,6 +176,7 @@ class TestGuardBeeUI(unittest.TestCase):
         app = open_incident("INC-1001")
         timeline = app.dataframe[0].value
         self.assertEqual(list(timeline["Time (UTC)"]), sorted(timeline["Time (UTC)"]))
+        self.assertEqual(list(timeline["Rule evidence"]), ["—"] + ["✓ Evidence"] * 5)  # text, never a checkbox
         rules = app.dataframe[1].value
         expected = engine.analyze_incident(data_loader.load_incidents(APP_PATH.parent / "data" / "incidents.json")[0])
         self.assertEqual(list(rules["Rule"]), [hit["rule_id"] for hit in expected["rule_hits"]])
@@ -210,8 +196,7 @@ class TestGuardBeeUI(unittest.TestCase):
                  "ip": "198.51.100.9", "country": hostile},
             ],
         }
-        partition = IncidentPartitionResult(valid=[incident], issues=[])
-        with patch.object(data_loader, "load_incidents_partitioned", return_value=partition):
+        with patch.object(data_loader, "load_incidents", return_value=[incident]):
             app = open_incident("INC-X")
         self.assertFalse(app.exception)
         text = page_text(app)
@@ -222,11 +207,7 @@ class TestGuardBeeUI(unittest.TestCase):
         self.assertIn("\\<img", outside_code)
 
     def test_load_error_shows_no_counts(self):
-        with patch.object(
-            data_loader,
-            "load_incidents_partitioned",
-            side_effect=data_loader.DataValidationError("broken"),
-        ):
+        with patch.object(data_loader, "load_incidents", side_effect=data_loader.DataValidationError("broken")):
             app = start_app()
         self.assertIn("could not load its synthetic data safely", page_text(app))
         self.assertEqual(len(app.metric), 0)
@@ -259,19 +240,30 @@ class TestGuardBeeUI(unittest.TestCase):
         history = app.dataframe[0].value
         self.assertEqual(list(history["Incident"]), ["INC-1001"])
         self.assertEqual(list(history["Decision"]), ["✅ APPROVED"])
-        text = page_text(app)
-        self.assertIn("SIMULATION ONLY", text)
-        self.assertIn("Local SQLite audit store (data/audit.db)", text)
-        self.assertIn("survive browser refreshes and app restarts", text)
-        self.assertIn("Evidence IDs:", text)
-        self.assertIn("Policy IDs:", text)
-        # Streamlit markdown escaping may render the label as "Report context ID\:".
-        self.assertIn("Report context ID", text)
+        self.assertEqual(list(history["Simulation only"]), ["Yes"])
+        self.assertIn("SIMULATION ONLY", page_text(app))
 
         app.button(key="audit_open").click().run()
         self.assertEqual(app.title[0].value, "Security Incidents")
         self.assertEqual(app.radio(key="incident_picker").value, "INC-1001")
         self.assertTrue(app.button(key="btn_approve").disabled)  # the recorded decision still locks it
+
+    def test_audit_detail_follows_the_selected_row(self):
+        app = self.approve_validated_report()
+        app.button(key="ai_request_btn").click().run()  # a new report allows one more decision
+        app.button(key="btn_reject").click().run()
+        app.button(key="open_audit").click().run()
+        self.assertEqual(list(app.dataframe[0].value["Decision"]), ["⛔ REJECTED", "✅ APPROVED"])
+        detail = lambda: next(m.value for m in app.markdown if m.value.startswith("**Decision**"))
+        self.assertIn("REJECTED", detail())  # newest record by default
+
+        app.session_state["audit_table:All:All"] = {"selection": {"rows": [], "columns": [], "cells": [[1, "Actor"]]}}
+        app.run()
+        self.assertIn("APPROVED", detail())  # clicking any cell of the older row shows it
+
+        app.session_state["audit_table:All:All"] = {"selection": {"rows": [], "columns": [], "cells": []}}
+        app.run()
+        self.assertIn("REJECTED", detail())  # clearing the selection falls back to the newest
 
     def test_changing_incident_invalidates_report(self):
         self.use_report(VALID_REPORT)
@@ -281,6 +273,72 @@ class TestGuardBeeUI(unittest.TestCase):
         app.radio(key="incident_picker").set_value("INC-1002").run()
         self.assertIsNone(app.session_state["report"])
         self.assertTrue(app.button(key="btn_approve").disabled)
+
+    def test_approve_outcome_describes_the_engine_action(self):
+        self.use_report("EVT-202 per POL-001.")
+        app = open_incident("INC-1003")  # NORMAL: the engine proposes no containment
+        app.button(key="ai_request_btn").click().run()
+        app.button(key="btn_approve").click().run()
+        outcome = app.session_state["audit"][-1]["outcome"]
+        self.assertIn("No containment recommendation", outcome)
+        self.assertNotIn("session-revocation", outcome)
+
+    def test_recorded_decision_is_shown_after_switching_incidents(self):
+        app = self.approve_validated_report()
+        app.radio(key="incident_picker").set_value("INC-1002").run()
+        self.assertNotIn("Last recorded decision", page_text(app))
+        app.radio(key="incident_picker").set_value("INC-1001").run()
+        self.assertIn("Last recorded decision\\: APPROVED", page_text(app))
+        app.button(key="open_audit").click().run()
+        self.assertEqual(app.title[0].value, "Audit History")
+
+    def test_ai_report_links_and_images_are_not_rendered(self):
+        self.use_report(
+            "## Facts\nEVT-006 per POL-001. [click](https://evil.example/x) ![p](https://evil.example/p.png) "
+            "owner@evil.example https://evil.example www.evil.example <b>x</b>"
+        )
+        app = open_incident("INC-1001")
+        app.button(key="ai_request_btn").click().run()
+        shown = next(element.value for element in app.markdown if "EVT-006 per POL-001" in element.value)
+        self.assertIn("## Facts", shown)  # headings and lists still render
+        self.assertNotIn("](", shown)  # Markdown links and images are reduced to their text
+        outside_code = re.sub(r"`[^`]*`", "", shown)
+        for address in ("evil.example", "://", "@"):
+            self.assertNotIn(address, outside_code)  # addresses only appear as literal code
+        self.assertIn("`owner@evil.example`", shown)
+        self.assertIn("`https://evil.example`", shown)
+        self.assertIn("\\<b>", shown)
+
+    def test_policy_tab_shows_investigation_guidance(self):
+        app = open_incident("INC-1009")  # only POL-005 matches; it used to have no policy at all
+        self.assertFalse(app.button(key="ai_request_btn").disabled)
+        self.assertTrue(any("Investigation guidance" in str(element.value) for element in app.info))
+
+    def test_filter_options_show_match_counts(self):
+        options = open_incident("INC-1001").selectbox(key="incident_filter").options
+        self.assertIn("All (16)", options)
+        self.assertIn("Critical severity (1)", options)
+        self.assertIn("High severity (2)", options)
+        self.assertIn("Medium severity (3)", options)
+        self.assertIn("Low severity (3)", options)
+        self.assertIn("Suspicious (9)", options)
+
+    def test_requesting_a_report_opens_the_ai_analysis_tab(self):
+        self.use_report(VALID_REPORT)
+        app = open_incident("INC-1001")
+        self.assertEqual(app.session_state["incident_tabs"], "Timeline")
+        app.button(key="ai_request_btn").click().run()
+        self.assertFalse(app.exception)
+        self.assertEqual(app.session_state["incident_tabs"], "AI Analysis")
+        self.assertNotIn("scroll_to_tabs", app.session_state)  # the scroll ran once and was consumed
+
+        app.radio(key="incident_picker").set_value("INC-1002").run()  # a new incident starts on its timeline
+        self.assertEqual(app.session_state["incident_tabs"], "Timeline")
+
+        self.generate.side_effect = ai_client.AIReportError("Nebius Token Factory did not return a report.")
+        app.button(key="ai_request_btn").click().run()  # a failure is shown there too
+        self.assertFalse(app.exception)
+        self.assertEqual(app.session_state["incident_tabs"], "AI Analysis")
 
     def test_invalid_citations_keep_decision_locked(self):
         self.use_report("EVT-999 per POL-001.")
@@ -296,6 +354,7 @@ class TestGuardBeeUI(unittest.TestCase):
         app.button(key="ai_request_btn").click().run()
         self.assertIsNone(app.session_state["report"])
         self.assertIn("did not return a report", page_text(app))
+        self.assertTrue(any("AI report failed" in element.value for element in app.error))  # shown beside the button
         self.assertTrue(app.button(key="btn_approve").disabled)
 
         self.use_report(VALID_REPORT)

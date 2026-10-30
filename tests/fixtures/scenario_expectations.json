@@ -101,13 +101,13 @@
   },
   {
     "id": "INC-1011",
-    "scenario_type": "incomplete_evidence",
-    "expected_classification": "INSUFFICIENT_EVIDENCE",
-    "in_production": false,
-    "loader_status": "rejected_empty_ip",
-    "proposal_defect": "Empty IP is invalid for production loader; kept in tests/fixtures/incomplete_ip_incident.json. Engine classifies raw record as INSUFFICIENT_EVIDENCE.",
-    "test": "test_scenario_fixtures.TestScenarioFixtures.test_incomplete_ip_loader_and_engine",
-    "notes": "Empty source IP is incomplete evidence and must not be treated as an unfamiliar address."
+    "scenario_type": "impossible_travel_account_takeover",
+    "expected_classification": "SUSPICIOUS",
+    "in_production": true,
+    "loader_status": "valid",
+    "proposal_defect": null,
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
+    "notes": "Production INC-1011: unfamiliar burst/success patterns with impossible travel; engine classifies SUSPICIOUS."
   },
   {
     "id": "INC-1012",
@@ -138,5 +138,15 @@
     "proposal_defect": "CH-03 Option B: proposal metadata expected SUSPICIOUS, but the authoritative payload has only two failures before unfamiliar-IP success; RULE-001/003 require >=3, so approved expectation remains INSUFFICIENT_EVIDENCE. See docs/SCENARIO_COVERAGE_MATRIX.md.",
     "test": "test_scenario_fixtures.TestScenarioFixtures.test_fixture_classifications_match_engine",
     "notes": "Array order is intentionally non-chronological. After timestamp sort, two prior failures do not meet the burst/sequence threshold; GB-RULE-002 applies. Chronology coverage remains required."
+  },
+  {
+    "id": "INC-INCOMPLETE-IP",
+    "scenario_type": "incomplete_evidence",
+    "expected_classification": "INSUFFICIENT_EVIDENCE",
+    "in_production": false,
+    "loader_status": "rejected_empty_ip",
+    "proposal_defect": "Empty IP is invalid for production loader; kept in tests/fixtures/incomplete_ip_incident.json. Engine classifies raw record as INSUFFICIENT_EVIDENCE.",
+    "test": "test_scenario_fixtures.TestScenarioFixtures.test_incomplete_ip_loader_and_engine",
+    "notes": "Empty source IP is incomplete evidence and must not be treated as an unfamiliar address. Id is fixture-only (not used in data/incidents.json)."
   }
 ]
